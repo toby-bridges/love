@@ -28,7 +28,7 @@ let lastX = 0;
 let lastY = 0;  
   
 // Three.js 相关  
-let scene, camera, renderer, particles;  
+let scene, camera, renderer, particles, star;  
 let treePositions = [];  
 let snowPositions = [];  
 let isTreeFormed = false;  
@@ -171,28 +171,22 @@ function goToStep2() {
     setTimeout(() => {  
         fogCanvas.style.display = 'none';  
           
-        // 播放音乐  
         bgm.play().catch(e => console.log('音乐播放需要交互'));  
           
-        // 初始化3D场景  
         initThreeJS();  
         threeContainer.style.display = 'block';  
           
-        // 开始雪花动画  
         animateSnow();  
           
-        // 2秒后开始汇聚成树  
         setTimeout(() => {  
             formTree();  
         }, 2000);  
           
-        // 4秒后显示许愿提示  
         setTimeout(() => {  
             hint.textContent = '🙏 闭上眼睛，许个愿吧';  
             hint.classList.add('show');  
         }, 4000);  
           
-        // 6秒后开始倒计时  
         setTimeout(() => {  
             startCountdown();  
         }, 6000);  
@@ -221,41 +215,33 @@ function initThreeJS() {
     const positions = new Float32Array(particleCount * 3);  
     const colors = new Float32Array(particleCount * 3);  
       
-    // 生成圣诞树形状的目标位置  
     for (let i = 0; i < particleCount; i++) {  
-        // 雪花初始位置（随机分布）  
         const snowX = (Math.random() - 0.5) * 10;  
         const snowY = (Math.random() - 0.5) * 10;  
         const snowZ = (Math.random() - 0.5) * 5;  
         snowPositions.push(snowX, snowY, snowZ);  
           
-        // 圣诞树形状（锥形）  
-        const y = Math.random() * 4 - 2; // -2 到 2  
-        const radius = (2 - y) * 0.5 * Math.random(); // 越往上越窄  
+        const y = Math.random() * 4 - 2;  
+        const radius = (2 - y) * 0.5 * Math.random();  
         const angle = Math.random() * Math.PI * 2;  
         const treeX = Math.cos(angle) * radius;  
         const treeZ = Math.sin(angle) * radius * 0.5;  
         treePositions.push(treeX, y, treeZ);  
           
-        // 初始位置设为雪花位置  
         positions[i * 3] = snowX;  
         positions[i * 3 + 1] = snowY;  
         positions[i * 3 + 2] = snowZ;  
           
-        // 颜色：绿色为主，点缀金色和红色  
         const colorChoice = Math.random();  
         if (colorChoice < 0.7) {  
-            // 绿色  
             colors[i * 3] = 0.1 + Math.random() * 0.2;  
             colors[i * 3 + 1] = 0.5 + Math.random() * 0.5;  
             colors[i * 3 + 2] = 0.1 + Math.random() * 0.2;  
         } else if (colorChoice < 0.85) {  
-            // 金色  
             colors[i * 3] = 1;  
             colors[i * 3 + 1] = 0.84;  
             colors[i * 3 + 2] = 0;  
         } else {  
-            // 红色  
             colors[i * 3] = 1;  
             colors[i * 3 + 1] = 0.2;  
             colors[i * 3 + 2] = 0.2;  
@@ -275,6 +261,63 @@ function initThreeJS() {
       
     particles = new THREE.Points(geometry, material);  
     scene.add(particles);  
+      
+    // ⭐ 创建星星（初始隐藏）  
+    createStar();  
+}  
+  
+// ==================== 创建顶部星星 ====================  
+function createStar() {  
+    const starGeometry = new THREE.BufferGeometry();  
+    const starCount = 50; // 用50个粒子组成星星  
+    const starPositions = new Float32Array(starCount * 3);  
+    const starColors = new Float32Array(starCount * 3);  
+      
+    for (let i = 0; i < starCount; i++) {  
+        // 星星形状：五角星的点分布  
+        const angle = (i / starCount) * Math.PI * 2;  
+        const isOuter = i % 2 === 0;  
+        const r = isOuter ? 0.3 : 0.15;  
+          
+        starPositions[i * 3] = Math.cos(angle) * r;  
+        starPositions[i * 3 + 1] = 2.2 + Math.sin(angle) * r; // 树顶位置  
+        starPositions[i * 3 + 2] = 0;  
+          
+        // 金色  
+        starColors[i * 3] = 1;  
+        starColors[i * 3 + 1] = 0.85;  
+        starColors[i * 3 + 2] = 0;  
+    }  
+      
+    starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));  
+    starGeometry.setAttribute('color', new THREE.BufferAttribute(starColors, 3));  
+      
+    const starMaterial = new THREE.PointsMaterial({  
+        size: 0.15,  
+        vertexColors: true,  
+        transparent: true,  
+        opacity: 0,  
+        blending: THREE.AdditiveBlending  
+    });  
+      
+    star = new THREE.Points(starGeometry, starMaterial);  
+    scene.add(star);  
+}  
+  
+// ==================== 显示星星 ====================  
+function showStar() {  
+    if (!star) return;  
+      
+    let opacity = 0;  
+    function fadeIn() {  
+        opacity += 0.05;  
+        star.material.opacity = Math.min(opacity, 1);  
+          
+        if (opacity < 1) {  
+            requestAnimationFrame(fadeIn);  
+        }  
+    }  
+    fadeIn();  
 }  
   
 // ==================== 雪花飘落动画 ====================  
@@ -284,10 +327,9 @@ function animateSnow() {
     const positions = particles.geometry.attributes.position.array;  
       
     for (let i = 0; i < positions.length; i += 3) {  
-        positions[i + 1] -= 0.02; // 向下飘  
-        positions[i] += (Math.random() - 0.5) * 0.02; // 轻微左右摇摆  
+        positions[i + 1] -= 0.02;  
+        positions[i] += (Math.random() - 0.5) * 0.02;  
           
-        // 如果飘出屏幕，重置到顶部  
         if (positions[i + 1] < -5) {  
             positions[i + 1] = 5;  
         }  
@@ -308,14 +350,13 @@ function formTree() {
     isTreeFormed = true;  
       
     const positions = particles.geometry.attributes.position.array;  
-    const duration = 2000; // 2秒汇聚  
+    const duration = 2000;  
     const startTime = Date.now();  
       
     function animateToTree() {  
         const elapsed = Date.now() - startTime;  
         const progress = Math.min(elapsed / duration, 1);  
           
-        // 缓动函数  
         const easeProgress = 1 - Math.pow(1 - progress, 3);  
           
         for (let i = 0; i < positions.length / 3; i++) {  
@@ -327,13 +368,15 @@ function formTree() {
           
         particles.geometry.attributes.position.needsUpdate = true;  
         particles.rotation.y += 0.005;  
+        if (star) star.rotation.y = particles.rotation.y;  
           
         renderer.render(scene, camera);  
           
         if (progress < 1) {  
             requestAnimationFrame(animateToTree);  
         } else {  
-            // 汇聚完成，继续旋转  
+            // ⭐ 树形成完毕，显示星星  
+            showStar();  
             animateTreeRotation();  
         }  
     }  
@@ -344,6 +387,7 @@ function formTree() {
 // ==================== 圣诞树旋转动画 ====================  
 function animateTreeRotation() {  
     particles.rotation.y += 0.005;  
+    if (star) star.rotation.y = particles.rotation.y;  
     renderer.render(scene, camera);  
     requestAnimationFrame(animateTreeRotation);  
 }  
@@ -363,7 +407,6 @@ function startCountdown() {
                 setTimeout(showCount, 300);  
             }, 700);  
         } else {  
-            // 倒计时结束，截图  
             countdown.textContent = '✨';  
             countdown.classList.add('show');  
             takePhoto(2);  
@@ -384,9 +427,8 @@ function goToStep3() {
     hint.textContent = '🎅 准备戴上圣诞帽...';  
     hint.classList.add('show');  
       
-    // 这里先显示提示，下一步我们会添加帽子功能  
     setTimeout(() => {  
-        alert('🎄 第二步完成！\n\n✅ 圣诞树已生成\n✅ 第二张照片已保存\n\n接下来我们将添加圣诞帽效果！');  
+        alert('🎄 第二步完成！\n\n✅ 圣诞树已生成\n✅ 顶部星星已点亮 ⭐\n✅ 第二张照片已保存\n\n接下来我们将添加圣诞帽效果！');  
     }, 1000);  
 }  
   
