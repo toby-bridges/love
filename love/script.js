@@ -5,12 +5,16 @@ const cameraCtx = cameraCanvas.getContext('2d');
 const fogCanvas = document.getElementById('fog-canvas');  
 const fogCtx = fogCanvas.getContext('2d');  
 const threeContainer = document.getElementById('three-container');  
+const hatCanvas = document.getElementById('hat-canvas');  
+const hatCtx = hatCanvas.getContext('2d');  
+const hatImg = document.getElementById('hat-img');  
 const startOverlay = document.getElementById('start-overlay');  
 const startBtn = document.getElementById('start-btn');  
 const hint = document.getElementById('hint');  
 const countdown = document.getElementById('countdown');  
 const flash = document.getElementById('flash');  
 const bgm = document.getElementById('bgm');  
+const finalDisplay = document.getElementById('final-display');  
   
 // 截图存储  
 let photo1 = null;  
@@ -28,10 +32,15 @@ let lastX = 0;
 let lastY = 0;  
   
 // Three.js 相关  
-let scene, camera, renderer, particles, star;  
+let scene, camera3d, renderer, particles, star;  
 let treePositions = [];  
 let snowPositions = [];  
 let isTreeFormed = false;  
+let isTreeMoved = false;  
+  
+// FaceMesh 相关  
+let faceMesh = null;  
+let faceDetected = false;  
   
 // ==================== 初始化画布尺寸 ====================  
 function resizeCanvas() {  
@@ -41,6 +50,8 @@ function resizeCanvas() {
     cameraCanvas.height = h;  
     fogCanvas.width = w;  
     fogCanvas.height = h;  
+    hatCanvas.width = w;  
+    hatCanvas.height = h;  
 }  
   
 // ==================== 启动摄像头 ====================  
@@ -85,7 +96,10 @@ function drawCamera() {
         cameraCtx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);  
         cameraCtx.restore();  
     }  
-    requestAnimationFrame(drawCamera);  
+      
+    if (currentStep !== 3) {  
+        requestAnimationFrame(drawCamera);  
+    }  
 }  
   
 // ==================== 初始化雾气 ====================  
@@ -152,6 +166,10 @@ function takePhoto(step) {
         tempCtx.drawImage(renderer.domElement, 0, 0);  
     }  
       
+    if (step === 3) {  
+        tempCtx.drawImage(hatCanvas, 0, 0);  
+    }  
+      
     const data = tempCanvas.toDataURL('image/jpeg', 0.8);  
     if (step === 1) photo1 = data;  
     if (step === 2) photo2 = data;  
@@ -171,7 +189,6 @@ function goToStep2() {
     setTimeout(() => {  
         fogCanvas.style.display = 'none';  
           
-        // ✅ 取消静音，音乐开始播放（已经在点击时预热过了）  
         bgm.muted = false;  
         bgm.volume = 1;  
           
@@ -184,16 +201,67 @@ function goToStep2() {
             formTree();  
         }, 2000);  
           
+        // 树形成后，显示提示并移动树到角落  
         setTimeout(() => {  
             hint.textContent = '🙏 闭上眼睛，许个愿吧';  
             hint.classList.add('show');  
+            // 移动树到右上角  
+            moveTreeToCorner();  
         }, 4000);  
           
         setTimeout(() => {  
-            startCountdown();  
+            startCountdown(2);  
         }, 6000);  
           
     }, 1500);  
+}  
+  
+// ==================== 移动树到右上角 ====================  
+function moveTreeToCorner() {  
+    if (!particles || isTreeMoved) return;  
+    isTreeMoved = true;  
+      
+    const duration = 1000; // 1秒移动动画  
+    const startTime = Date.now();  
+      
+    // 起始位置  
+    const startX = particles.position.x;  
+    const startY = particles.position.y;  
+    const startScale = 1;  
+      
+    // 目标位置（右上角）  
+    const targetX = 2.5;  
+    const targetY = 1.8;  
+    const targetScale = 0.4;  
+      
+    function animateMove() {  
+        const elapsed = Date.now() - startTime;  
+        const progress = Math.min(elapsed / duration, 1);  
+          
+        // 缓动  
+        const easeProgress = 1 - Math.pow(1 - progress, 3);  
+          
+        // 移动位置  
+        particles.position.x = startX + (targetX - startX) * easeProgress;  
+        particles.position.y = startY + (targetY - startY) * easeProgress;  
+          
+        // 缩小  
+        const scale = startScale + (targetScale - startScale) * easeProgress;  
+        particles.scale.set(scale, scale, scale);  
+          
+        // 星星跟随  
+        if (star) {  
+            star.position.x = particles.position.x;  
+            star.position.y = particles.position.y;  
+            star.scale.set(scale, scale, scale);  
+        }  
+          
+        if (progress < 1) {  
+            requestAnimationFrame(animateMove);  
+        }  
+    }  
+      
+    animateMove();  
 }  
   
 // ==================== Three.js 初始化 ====================  
@@ -203,8 +271,8 @@ function initThreeJS() {
       
     scene = new THREE.Scene();  
       
-    camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);  
-    camera.position.z = 5;  
+    camera3d = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);  
+    camera3d.position.z = 5;  
       
     renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });  
     renderer.setSize(width, height);  
@@ -336,7 +404,7 @@ function animateSnow() {
     particles.geometry.attributes.position.needsUpdate = true;  
     particles.rotation.y += 0.002;  
       
-    renderer.render(scene, camera);  
+    renderer.render(scene, camera3d);  
       
     if (!isTreeFormed) {  
         requestAnimationFrame(animateSnow);  
@@ -368,7 +436,7 @@ function formTree() {
         particles.rotation.y += 0.005;  
         if (star) star.rotation.y = particles.rotation.y;  
           
-        renderer.render(scene, camera);  
+        renderer.render(scene, camera3d);  
           
         if (progress < 1) {  
             requestAnimationFrame(animateToTree);  
@@ -383,14 +451,15 @@ function formTree() {
   
 // ==================== 圣诞树旋转动画 ====================  
 function animateTreeRotation() {  
+    if (!particles) return;  
     particles.rotation.y += 0.005;  
     if (star) star.rotation.y = particles.rotation.y;  
-    renderer.render(scene, camera);  
+    renderer.render(scene, camera3d);  
     requestAnimationFrame(animateTreeRotation);  
 }  
   
 // ==================== 倒计时 ====================  
-function startCountdown() {  
+function startCountdown(nextStep) {  
     let count = 3;  
       
     function showCount() {  
@@ -404,13 +473,22 @@ function startCountdown() {
                 setTimeout(showCount, 300);  
             }, 700);  
         } else {  
-            countdown.textContent = '✨';  
+            countdown.textContent = '📸';  
             countdown.classList.add('show');  
-            takePhoto(2);  
+              
+            if (nextStep === 3) {  
+                takePhoto(2);  
+            } else if (nextStep === 4) {  
+                takePhoto(3);  
+            }  
               
             setTimeout(() => {  
                 countdown.classList.remove('show');  
-                goToStep3();  
+                if (nextStep === 3) {  
+                    goToStep3();  
+                } else if (nextStep === 4) {  
+                    goToStep4();  
+                }  
             }, 1000);  
         }  
     }  
@@ -421,12 +499,139 @@ function startCountdown() {
 // ==================== 进入第三步：戴帽子 ====================  
 function goToStep3() {  
     currentStep = 3;  
-    hint.textContent = '🎅 准备戴上圣诞帽...';  
+      
+    hint.textContent = '🎅 看镜头，准备戴圣诞帽！';  
     hint.classList.add('show');  
       
+    hatCanvas.style.display = 'block';  
+      
+    initFaceMesh();  
+}  
+  
+// ==================== 初始化 FaceMesh ====================  
+function initFaceMesh() {  
+    faceMesh = new FaceMesh({  
+        locateFile: (file) => {  
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;  
+        }  
+    });  
+      
+    faceMesh.setOptions({  
+        maxNumFaces: 1,  
+        refineLandmarks: true,  
+        minDetectionConfidence: 0.5,  
+        minTrackingConfidence: 0.5  
+    });  
+      
+    faceMesh.onResults(onFaceResults);  
+      
+    detectFace();  
+      
     setTimeout(() => {  
-        alert('🎄 第二步完成！\n\n✅ 圣诞树已生成\n✅ 顶部星星已点亮 ⭐\n✅ 第二张照片已保存\n\n接下来我们将添加圣诞帽效果！');  
-    }, 1000);  
+        hint.textContent = '✨ 保持微笑！';  
+        setTimeout(() => {  
+            startCountdown(4);  
+        }, 1000);  
+    }, 4000);  
+}  
+  
+// ==================== 人脸检测循环 ====================  
+async function detectFace() {  
+    if (currentStep !== 3) return;  
+      
+    if (video.readyState >= 2) {  
+        await faceMesh.send({ image: video });  
+    }  
+      
+    requestAnimationFrame(detectFace);  
+}  
+  
+// ==================== 人脸检测结果处理 ====================  
+function onFaceResults(results) {  
+    hatCtx.clearRect(0, 0, hatCanvas.width, hatCanvas.height);  
+      
+    if (video.readyState >= 2) {  
+        cameraCtx.save();  
+        cameraCtx.translate(cameraCanvas.width, 0);  
+        cameraCtx.scale(-1, 1);  
+          
+        const videoRatio = video.videoWidth / video.videoHeight;  
+        const canvasRatio = cameraCanvas.width / cameraCanvas.height;  
+        let drawWidth, drawHeight, offsetX, offsetY;  
+          
+        if (canvasRatio > videoRatio) {  
+            drawWidth = cameraCanvas.width;  
+            drawHeight = cameraCanvas.width / videoRatio;  
+            offsetX = 0;  
+            offsetY = (cameraCanvas.height - drawHeight) / 2;  
+        } else {  
+            drawHeight = cameraCanvas.height;  
+            drawWidth = cameraCanvas.height * videoRatio;  
+            offsetX = (cameraCanvas.width - drawWidth) / 2;  
+            offsetY = 0;  
+        }  
+          
+        cameraCtx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);  
+        cameraCtx.restore();  
+    }  
+      
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {  
+        faceDetected = true;  
+        const landmarks = results.multiFaceLandmarks[0];  
+          
+        const forehead = landmarks[10];  
+        const leftTemple = landmarks[234];  
+        const rightTemple = landmarks[454];  
+          
+        const hatX = (1 - forehead.x) * hatCanvas.width;  
+        const hatY = forehead.y * hatCanvas.height;  
+          
+        const faceWidth = Math.abs(rightTemple.x - leftTemple.x) * hatCanvas.width;  
+        const hatWidth = faceWidth * 2.2;  
+        const hatHeight = hatWidth * (hatImg.naturalHeight / hatImg.naturalWidth);  
+          
+        const deltaX = (1 - rightTemple.x) - (1 - leftTemple.x);  
+        const deltaY = rightTemple.y - leftTemple.y;  
+        const angle = Math.atan2(deltaY, deltaX);  
+          
+        hatCtx.save();  
+        hatCtx.translate(hatX, hatY - hatHeight * 0.3);  
+        hatCtx.rotate(angle);  
+        hatCtx.drawImage(hatImg, -hatWidth / 2, -hatHeight / 2, hatWidth, hatHeight);  
+        hatCtx.restore();  
+    }  
+}  
+  
+// ==================== 进入第四步：展示照片 ====================  
+function goToStep4() {  
+    currentStep = 4;  
+      
+    hint.classList.remove('show');  
+      
+    hatCanvas.style.display = 'none';  
+    threeContainer.style.display = 'none';  
+      
+    showFinalPhotos();  
+}  
+  
+// ==================== 展示最终照片 ====================  
+function showFinalPhotos() {  
+    finalDisplay.innerHTML = `  
+        <div class="final-title">🎄 Merry Christmas 🎄</div>  
+        <div class="photo-container">  
+            <div class="polaroid">  
+                <img src="${photo1 || ''}" alt="擦雾">  
+            </div>  
+            <div class="polaroid">  
+                <img src="${photo2 || ''}" alt="许愿">  
+            </div>  
+            <div class="polaroid">  
+                <img src="${photo3 || ''}" alt="圣诞帽">  
+            </div>  
+        </div>  
+    `;  
+      
+    finalDisplay.classList.add('show');  
 }  
   
 // ==================== 触摸/鼠标事件 ====================  
@@ -476,14 +681,12 @@ fogCanvas.addEventListener('touchend', () => { isDrawing = false; });
 startBtn.addEventListener('click', async () => {  
     startBtn.textContent = '启动中...';  
       
-    // ✅ iOS 音频预热：在用户点击时立即播放（静音状态）  
     bgm.muted = true;  
     bgm.volume = 0;  
     try {  
         await bgm.play();  
-        console.log('🎵 音频已预热');  
     } catch (e) {  
-        console.log('音频预热失败，但继续执行');  
+        console.log('音频预热失败');  
     }  
       
     resizeCanvas();  
@@ -510,7 +713,7 @@ window.addEventListener('resize', () => {
     }  
     if (renderer) {  
         renderer.setSize(window.innerWidth, window.innerHeight);  
-        camera.aspect = window.innerWidth / window.innerHeight;  
-        camera.updateProjectionMatrix();  
+        camera3d.aspect = window.innerWidth / window.innerHeight;  
+        camera3d.updateProjectionMatrix();  
     }  
 });  
