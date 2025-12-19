@@ -1,41 +1,37 @@
 <!DOCTYPE html>  
-<html>  
+<html lang="zh">  
 <head>  
     <meta charset="UTF-8">  
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">  
-    <title>Test</title>  
-    <style>  
-        * { margin: 0; padding: 0; }  
-        body { background: #000; overflow: hidden; }  
-        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }  
-        #fog { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); }  
-        #btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 20px 40px; font-size: 20px; z-index: 10; }  
-    </style>  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">  
+    <title>Merry Christmas</title>  
+    <link rel="stylesheet" href="style.css">  
 </head>  
 <body>  
+    <!-- 背景音乐（第二步才播放） -->  
+    <audio id="bgm" loop preload="auto">  
+        <source src="music.mp3" type="audio/mpeg">  
+    </audio>  
+  
+    <!-- 摄像头视频（隐藏，作为数据源） -->  
     <video id="video" autoplay playsinline></video>  
-    <div id="fog"></div>  
-    <button id="btn">点击开始</button>  
   
-    <script>  
-        const video = document.getElementById('video');  
-        const fog = document.getElementById('fog');  
-        const btn = document.getElementById('btn');  
+    <!-- 主画布：显示摄像头画面 -->  
+    <canvas id="camera-canvas"></canvas>  
   
-        btn.onclick = async function() {  
-            btn.style.display = 'none';  
-            try {  
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });  
-                video.srcObject = stream;  
-                // 摄像头成功后，3秒后雾气消失（模拟擦除成功）  
-                setTimeout(() => {  
-                    fog.style.transition = 'opacity 2s';  
-                    fog.style.opacity = '0';  
-                }, 3000);  
-            } catch (e) {  
-                alert('摄像头启动失败: ' + e.message);  
-            }  
-        };  
-    </script>  
+    <!-- 雾气画布：覆盖在上面 -->  
+    <canvas id="fog-canvas"></canvas>  
+  
+    <!-- 开始按钮 -->  
+    <div id="start-overlay">  
+        <button id="start-btn">❄️ 点击开始 ❄️</button>  
+    </div>  
+  
+    <!-- 提示文字 -->  
+    <div id="hint" style="display:none;">用手指擦去雾气</div>  
+  
+    <!-- 闪光效果（截图时用） -->  
+    <div id="flash"></div>  
+  
+    <script src="script.js"></script>  
 </body>  
 </html>  
