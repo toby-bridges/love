@@ -4,13 +4,15 @@ const cameraCanvas = document.getElementById('camera-canvas');
 const cameraCtx = cameraCanvas.getContext('2d');  
 const fogCanvas = document.getElementById('fog-canvas');  
 const fogCtx = fogCanvas.getContext('2d');  
+const threeContainer = document.getElementById('three-container');  
 const startOverlay = document.getElementById('start-overlay');  
 const startBtn = document.getElementById('start-btn');  
 const hint = document.getElementById('hint');  
+const countdown = document.getElementById('countdown');  
 const flash = document.getElementById('flash');  
 const bgm = document.getElementById('bgm');  
   
-// 存储三张截图  
+// 截图存储  
 let photo1 = null;  
 let photo2 = null;  
 let photo3 = null;  
@@ -20,11 +22,16 @@ let currentStep = 0;
   
 // 擦除相关  
 let isDrawing = false;  
-let fogImageData = null;  
 let totalPixels = 0;  
 let clearedPixels = 0;  
 let lastX = 0;  
 let lastY = 0;  
+  
+// Three.js 相关  
+let scene, camera, renderer, particles;  
+let treePositions = [];  
+let snowPositions = [];  
+let isTreeFormed = false;  
   
 // ==================== 初始化画布尺寸 ====================  
 function resizeCanvas() {  
@@ -47,7 +54,7 @@ async function startCamera() {
         await video.play();  
         return true;  
     } catch (e) {  
-        alert('无法访问摄像头，请确保授予权限！\n错误：' + e.message);  
+        alert('无法访问摄像头: ' + e.message);  
         return false;  
     }  
 }  
@@ -55,12 +62,10 @@ async function startCamera() {
 // ==================== 绘制摄像头画面 ====================  
 function drawCamera() {  
     if (video.readyState >= 2) {  
-        // 镜像绘制  
         cameraCtx.save();  
         cameraCtx.translate(cameraCanvas.width, 0);  
         cameraCtx.scale(-1, 1);  
           
-        // 计算填充尺寸（保持比例铺满）  
         const videoRatio = video.videoWidth / video.videoHeight;  
         const canvasRatio = cameraCanvas.width / cameraCanvas.height;  
         let drawWidth, drawHeight, offsetX, offsetY;  
@@ -85,11 +90,9 @@ function drawCamera() {
   
 // ==================== 初始化雾气 ====================  
 function initFog() {  
-    // 填充白色雾气  
     fogCtx.fillStyle = 'rgba(255, 255, 255, 0.92)';  
     fogCtx.fillRect(0, 0, fogCanvas.width, fogCanvas.height);  
       
-    // 添加噪点纹理  
     for (let i = 0; i < 30000; i++) {  
         const x = Math.random() * fogCanvas.width;  
         const y = Math.random() * fogCanvas.height;  
@@ -98,8 +101,6 @@ function initFog() {
         fogCtx.fillRect(x, y, 2, 2);  
     }  
       
-    // 保存雾气图像数据  
-    fogImageData = fogCtx.getImageData(0, 0, fogCanvas.width, fogCanvas.height);  
     totalPixels = fogCanvas.width * fogCanvas.height;  
     clearedPixels = 0;  
 }  
@@ -108,10 +109,7 @@ function initFog() {
 function clearFog(x, y) {  
     const radius = 40;  
       
-    // 使用 destination-out 实现擦除  
     fogCtx.globalCompositeOperation = 'destination-out';  
-      
-    // 画一条从上次位置到当前位置的线（让擦除更连贯）  
     fogCtx.beginPath();  
     fogCtx.lineWidth = radius * 2;  
     fogCtx.lineCap = 'round';  
@@ -119,18 +117,14 @@ function clearFog(x, y) {
     fogCtx.moveTo(lastX || x, lastY || y);  
     fogCtx.lineTo(x, y);  
     fogCtx.stroke();  
-      
-    // 恢复默认合成模式  
     fogCtx.globalCompositeOperation = 'source-over';  
       
     lastX = x;  
     lastY = y;  
       
-    // 更新擦除进度  
     clearedPixels += radius * 2;  
     const progress = Math.min((clearedPixels / totalPixels) * 100, 100);  
       
-    // 当擦除达到 8% 时触发下一步（因为计算方式是估算，8%体验上差不多是擦了一小块区域）  
     if (progress >= 8 && currentStep === 1) {  
         currentStep = 2;  
         takePhoto(1);  
@@ -140,25 +134,24 @@ function clearFog(x, y) {
   
 // ==================== 截图功能 ====================  
 function takePhoto(step) {  
-    // 闪光效果  
     flash.classList.add('active');  
     setTimeout(() => flash.classList.remove('active'), 150);  
       
-    // 创建临时画布合并图层  
     const tempCanvas = document.createElement('canvas');  
     tempCanvas.width = cameraCanvas.width;  
     tempCanvas.height = cameraCanvas.height;  
     const tempCtx = tempCanvas.getContext('2d');  
       
-    // 画摄像头  
     tempCtx.drawImage(cameraCanvas, 0, 0);  
       
-    // 如果是第一步，也画上雾气  
     if (step === 1) {  
         tempCtx.drawImage(fogCanvas, 0, 0);  
     }  
       
-    // 保存  
+    if (step === 2 && renderer) {  
+        tempCtx.drawImage(renderer.domElement, 0, 0);  
+    }  
+      
     const data = tempCanvas.toDataURL('image/jpeg', 0.8);  
     if (step === 1) photo1 = data;  
     if (step === 2) photo2 = data;  
@@ -167,21 +160,234 @@ function takePhoto(step) {
     console.log(`📸 第${step}张照片已保存`);  
 }  
   
-// ==================== 进入第二步 ====================  
+// ==================== 进入第二步：圣诞树 ====================  
 function goToStep2() {  
-    // 隐藏提示  
-    hint.style.display = 'none';  
+    hint.textContent = '';  
+    hint.classList.remove('show');  
       
-    // 雾气淡出  
     fogCanvas.style.transition = 'opacity 1.5s ease-out';  
     fogCanvas.style.opacity = '0';  
       
     setTimeout(() => {  
         fogCanvas.style.display = 'none';  
           
-        // 显示成功信息（临时，后面会替换成圣诞树）  
-        alert('🎉 第一步完成！\n\n✅ 雾气已擦除\n✅ 第一张照片已保存\n\n接下来我们将添加圣诞树效果！');  
+        // 播放音乐  
+        bgm.play().catch(e => console.log('音乐播放需要交互'));  
+          
+        // 初始化3D场景  
+        initThreeJS();  
+        threeContainer.style.display = 'block';  
+          
+        // 开始雪花动画  
+        animateSnow();  
+          
+        // 2秒后开始汇聚成树  
+        setTimeout(() => {  
+            formTree();  
+        }, 2000);  
+          
+        // 4秒后显示许愿提示  
+        setTimeout(() => {  
+            hint.textContent = '🙏 闭上眼睛，许个愿吧';  
+            hint.classList.add('show');  
+        }, 4000);  
+          
+        // 6秒后开始倒计时  
+        setTimeout(() => {  
+            startCountdown();  
+        }, 6000);  
+          
     }, 1500);  
+}  
+  
+// ==================== Three.js 初始化 ====================  
+function initThreeJS() {  
+    const width = window.innerWidth;  
+    const height = window.innerHeight;  
+      
+    scene = new THREE.Scene();  
+      
+    camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);  
+    camera.position.z = 5;  
+      
+    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });  
+    renderer.setSize(width, height);  
+    renderer.setClearColor(0x000000, 0);  
+    threeContainer.appendChild(renderer.domElement);  
+      
+    // 创建粒子  
+    const particleCount = 2000;  
+    const geometry = new THREE.BufferGeometry();  
+    const positions = new Float32Array(particleCount * 3);  
+    const colors = new Float32Array(particleCount * 3);  
+      
+    // 生成圣诞树形状的目标位置  
+    for (let i = 0; i < particleCount; i++) {  
+        // 雪花初始位置（随机分布）  
+        const snowX = (Math.random() - 0.5) * 10;  
+        const snowY = (Math.random() - 0.5) * 10;  
+        const snowZ = (Math.random() - 0.5) * 5;  
+        snowPositions.push(snowX, snowY, snowZ);  
+          
+        // 圣诞树形状（锥形）  
+        const y = Math.random() * 4 - 2; // -2 到 2  
+        const radius = (2 - y) * 0.5 * Math.random(); // 越往上越窄  
+        const angle = Math.random() * Math.PI * 2;  
+        const treeX = Math.cos(angle) * radius;  
+        const treeZ = Math.sin(angle) * radius * 0.5;  
+        treePositions.push(treeX, y, treeZ);  
+          
+        // 初始位置设为雪花位置  
+        positions[i * 3] = snowX;  
+        positions[i * 3 + 1] = snowY;  
+        positions[i * 3 + 2] = snowZ;  
+          
+        // 颜色：绿色为主，点缀金色和红色  
+        const colorChoice = Math.random();  
+        if (colorChoice < 0.7) {  
+            // 绿色  
+            colors[i * 3] = 0.1 + Math.random() * 0.2;  
+            colors[i * 3 + 1] = 0.5 + Math.random() * 0.5;  
+            colors[i * 3 + 2] = 0.1 + Math.random() * 0.2;  
+        } else if (colorChoice < 0.85) {  
+            // 金色  
+            colors[i * 3] = 1;  
+            colors[i * 3 + 1] = 0.84;  
+            colors[i * 3 + 2] = 0;  
+        } else {  
+            // 红色  
+            colors[i * 3] = 1;  
+            colors[i * 3 + 1] = 0.2;  
+            colors[i * 3 + 2] = 0.2;  
+        }  
+    }  
+      
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));  
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));  
+      
+    const material = new THREE.PointsMaterial({  
+        size: 0.08,  
+        vertexColors: true,  
+        transparent: true,  
+        opacity: 0.9,  
+        blending: THREE.AdditiveBlending  
+    });  
+      
+    particles = new THREE.Points(geometry, material);  
+    scene.add(particles);  
+}  
+  
+// ==================== 雪花飘落动画 ====================  
+function animateSnow() {  
+    if (!particles) return;  
+      
+    const positions = particles.geometry.attributes.position.array;  
+      
+    for (let i = 0; i < positions.length; i += 3) {  
+        positions[i + 1] -= 0.02; // 向下飘  
+        positions[i] += (Math.random() - 0.5) * 0.02; // 轻微左右摇摆  
+          
+        // 如果飘出屏幕，重置到顶部  
+        if (positions[i + 1] < -5) {  
+            positions[i + 1] = 5;  
+        }  
+    }  
+      
+    particles.geometry.attributes.position.needsUpdate = true;  
+    particles.rotation.y += 0.002;  
+      
+    renderer.render(scene, camera);  
+      
+    if (!isTreeFormed) {  
+        requestAnimationFrame(animateSnow);  
+    }  
+}  
+  
+// ==================== 汇聚成圣诞树 ====================  
+function formTree() {  
+    isTreeFormed = true;  
+      
+    const positions = particles.geometry.attributes.position.array;  
+    const duration = 2000; // 2秒汇聚  
+    const startTime = Date.now();  
+      
+    function animateToTree() {  
+        const elapsed = Date.now() - startTime;  
+        const progress = Math.min(elapsed / duration, 1);  
+          
+        // 缓动函数  
+        const easeProgress = 1 - Math.pow(1 - progress, 3);  
+          
+        for (let i = 0; i < positions.length / 3; i++) {  
+            const idx = i * 3;  
+            positions[idx] = snowPositions[idx] + (treePositions[idx] - snowPositions[idx]) * easeProgress;  
+            positions[idx + 1] = snowPositions[idx + 1] + (treePositions[idx + 1] - snowPositions[idx + 1]) * easeProgress;  
+            positions[idx + 2] = snowPositions[idx + 2] + (treePositions[idx + 2] - snowPositions[idx + 2]) * easeProgress;  
+        }  
+          
+        particles.geometry.attributes.position.needsUpdate = true;  
+        particles.rotation.y += 0.005;  
+          
+        renderer.render(scene, camera);  
+          
+        if (progress < 1) {  
+            requestAnimationFrame(animateToTree);  
+        } else {  
+            // 汇聚完成，继续旋转  
+            animateTreeRotation();  
+        }  
+    }  
+      
+    animateToTree();  
+}  
+  
+// ==================== 圣诞树旋转动画 ====================  
+function animateTreeRotation() {  
+    particles.rotation.y += 0.005;  
+    renderer.render(scene, camera);  
+    requestAnimationFrame(animateTreeRotation);  
+}  
+  
+// ==================== 倒计时 ====================  
+function startCountdown() {  
+    let count = 3;  
+      
+    function showCount() {  
+        if (count > 0) {  
+            countdown.textContent = count;  
+            countdown.classList.add('show');  
+              
+            setTimeout(() => {  
+                countdown.classList.remove('show');  
+                count--;  
+                setTimeout(showCount, 300);  
+            }, 700);  
+        } else {  
+            // 倒计时结束，截图  
+            countdown.textContent = '✨';  
+            countdown.classList.add('show');  
+            takePhoto(2);  
+              
+            setTimeout(() => {  
+                countdown.classList.remove('show');  
+                goToStep3();  
+            }, 1000);  
+        }  
+    }  
+      
+    showCount();  
+}  
+  
+// ==================== 进入第三步：戴帽子 ====================  
+function goToStep3() {  
+    currentStep = 3;  
+    hint.textContent = '🎅 准备戴上圣诞帽...';  
+    hint.classList.add('show');  
+      
+    // 这里先显示提示，下一步我们会添加帽子功能  
+    setTimeout(() => {  
+        alert('🎄 第二步完成！\n\n✅ 圣诞树已生成\n✅ 第二张照片已保存\n\n接下来我们将添加圣诞帽效果！');  
+    }, 1000);  
 }  
   
 // ==================== 触摸/鼠标事件 ====================  
@@ -236,19 +442,14 @@ startBtn.addEventListener('click', async () => {
     const success = await startCamera();  
     if (!success) return;  
       
-    // 开始绘制摄像头  
     drawCamera();  
-      
-    // 初始化雾气  
     initFog();  
       
-    // 隐藏开始按钮  
     startOverlay.classList.add('hidden');  
       
-    // 显示提示  
-    hint.style.display = 'block';  
+    hint.textContent = '用手指擦去雾气 ❄️';  
+    hint.classList.add('show');  
       
-    // 设置当前步骤  
     currentStep = 1;  
 });  
   
@@ -257,5 +458,10 @@ window.addEventListener('resize', () => {
     resizeCanvas();  
     if (currentStep === 1) {  
         initFog();  
+    }  
+    if (renderer) {  
+        renderer.setSize(window.innerWidth, window.innerHeight);  
+        camera.aspect = window.innerWidth / window.innerHeight;  
+        camera.updateProjectionMatrix();  
     }  
 });  
