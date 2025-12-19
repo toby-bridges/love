@@ -171,7 +171,9 @@ function goToStep2() {
     setTimeout(() => {  
         fogCanvas.style.display = 'none';  
           
-        bgm.play().catch(e => console.log('音乐播放需要交互'));  
+        // ✅ 取消静音，音乐开始播放（已经在点击时预热过了）  
+        bgm.muted = false;  
+        bgm.volume = 1;  
           
         initThreeJS();  
         threeContainer.style.display = 'block';  
@@ -209,7 +211,6 @@ function initThreeJS() {
     renderer.setClearColor(0x000000, 0);  
     threeContainer.appendChild(renderer.domElement);  
       
-    // 创建粒子  
     const particleCount = 2000;  
     const geometry = new THREE.BufferGeometry();  
     const positions = new Float32Array(particleCount * 3);  
@@ -262,28 +263,25 @@ function initThreeJS() {
     particles = new THREE.Points(geometry, material);  
     scene.add(particles);  
       
-    // ⭐ 创建星星（初始隐藏）  
     createStar();  
 }  
   
 // ==================== 创建顶部星星 ====================  
 function createStar() {  
     const starGeometry = new THREE.BufferGeometry();  
-    const starCount = 50; // 用50个粒子组成星星  
+    const starCount = 50;  
     const starPositions = new Float32Array(starCount * 3);  
     const starColors = new Float32Array(starCount * 3);  
       
     for (let i = 0; i < starCount; i++) {  
-        // 星星形状：五角星的点分布  
         const angle = (i / starCount) * Math.PI * 2;  
         const isOuter = i % 2 === 0;  
         const r = isOuter ? 0.3 : 0.15;  
           
         starPositions[i * 3] = Math.cos(angle) * r;  
-        starPositions[i * 3 + 1] = 2.2 + Math.sin(angle) * r; // 树顶位置  
+        starPositions[i * 3 + 1] = 2.2 + Math.sin(angle) * r;  
         starPositions[i * 3 + 2] = 0;  
           
-        // 金色  
         starColors[i * 3] = 1;  
         starColors[i * 3 + 1] = 0.85;  
         starColors[i * 3 + 2] = 0;  
@@ -375,7 +373,6 @@ function formTree() {
         if (progress < 1) {  
             requestAnimationFrame(animateToTree);  
         } else {  
-            // ⭐ 树形成完毕，显示星星  
             showStar();  
             animateTreeRotation();  
         }  
@@ -478,6 +475,16 @@ fogCanvas.addEventListener('touchend', () => { isDrawing = false; });
 // ==================== 开始按钮 ====================  
 startBtn.addEventListener('click', async () => {  
     startBtn.textContent = '启动中...';  
+      
+    // ✅ iOS 音频预热：在用户点击时立即播放（静音状态）  
+    bgm.muted = true;  
+    bgm.volume = 0;  
+    try {  
+        await bgm.play();  
+        console.log('🎵 音频已预热');  
+    } catch (e) {  
+        console.log('音频预热失败，但继续执行');  
+    }  
       
     resizeCanvas();  
       
