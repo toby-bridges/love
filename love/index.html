@@ -5,21 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">  
     <title>Merry Christmas</title>  
     <link rel="stylesheet" href="style.css">  
+    <!-- Three.js 3D引擎 -->  
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>  
 </head>  
 <body>  
-    <!-- 背景音乐（第二步才播放） -->  
+    <!-- 背景音乐 -->  
     <audio id="bgm" loop preload="auto">  
         <source src="music.mp3" type="audio/mpeg">  
     </audio>  
   
-    <!-- 摄像头视频（隐藏，作为数据源） -->  
+    <!-- 摄像头视频 -->  
     <video id="video" autoplay playsinline></video>  
   
-    <!-- 主画布：显示摄像头画面 -->  
+    <!-- 摄像头画布 -->  
     <canvas id="camera-canvas"></canvas>  
   
-    <!-- 雾气画布：覆盖在上面 -->  
+    <!-- 雾气画布 -->  
     <canvas id="fog-canvas"></canvas>  
+  
+    <!-- 3D粒子画布 -->  
+    <div id="three-container"></div>  
   
     <!-- 开始按钮 -->  
     <div id="start-overlay">  
@@ -27,9 +32,12 @@
     </div>  
   
     <!-- 提示文字 -->  
-    <div id="hint" style="display:none;">用手指擦去雾气</div>  
+    <div id="hint"></div>  
   
-    <!-- 闪光效果（截图时用） -->  
+    <!-- 倒计时 -->  
+    <div id="countdown"></div>  
+  
+    <!-- 闪光效果 -->  
     <div id="flash"></div>  
   
     <script src="script.js"></script>  
