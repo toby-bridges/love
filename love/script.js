@@ -35,7 +35,6 @@ var lastY = 0;
 var scene, camera3d, renderer, particles, star;  
 var treePositions = [];  
 var snowPositions = [];  
-var currentPositions = [];  
 var isSnowing = true;  
 var isTreeFormed = false;  
   
@@ -127,7 +126,7 @@ function clearFog(x, y) {
     }  
 }  
   
-// ==================== 截图功能 ====================  
+// ==================== 截图功能（修复版） ====================  
 function takePhoto(step) {  
     flash.classList.add('active');  
     setTimeout(function() { flash.classList.remove('active'); }, 150);  
@@ -137,19 +136,27 @@ function takePhoto(step) {
     tempCanvas.height = cameraCanvas.height;  
     var tempCtx = tempCanvas.getContext('2d');  
       
+    // 1. 先画摄像头画面  
     tempCtx.drawImage(cameraCanvas, 0, 0);  
       
+    // 2. 第一张：叠加雾气  
     if (step === 1) {  
         tempCtx.drawImage(fogCanvas, 0, 0);  
     }  
-    if (step === 2 && renderer) {  
-        tempCtx.drawImage(renderer.domElement, 0, 0);  
+      
+    // 3. 第二张：叠加圣诞树（修复：确保renderer存在且有内容）  
+    if (step === 2 && renderer && renderer.domElement) {  
+        // 先渲染一帧确保内容是最新的  
+        renderer.render(scene, camera3d);  
+        tempCtx.drawImage(renderer.domElement, 0, 0, tempCanvas.width, tempCanvas.height);  
     }  
+      
+    // 4. 第三张：叠加帽子  
     if (step === 3) {  
         tempCtx.drawImage(hatCanvas, 0, 0);  
     }  
       
-    var data = tempCanvas.toDataURL('image/jpeg', 0.8);  
+    var data = tempCanvas.toDataURL('image/jpeg', 0.85);  
     if (step === 1) photo1 = data;  
     if (step === 2) photo2 = data;  
     if (step === 3) photo3 = data;  
@@ -213,7 +220,7 @@ function initThreeJS() {
     camera3d = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);  
     camera3d.position.z = 5;  
       
-    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });  
+    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });  
     renderer.setSize(width, height);  
     renderer.setClearColor(0x000000, 0);  
     threeContainer.appendChild(renderer.domElement);  
@@ -239,8 +246,6 @@ function initThreeJS() {
         var treeZ = Math.sin(angle) * radius * 0.5;  
         treePositions.push(treeX, y, treeZ);  
           
-        // 当前位置 = 雪花位置  
-        currentPositions.push(snowX, snowY, snowZ);  
         positions[i * 3] = snowX;  
         positions[i * 3 + 1] = snowY;  
         positions[i * 3 + 2] = snowZ;  
@@ -312,12 +317,9 @@ function animateSnow() {
     var positions = particles.geometry.attributes.position.array;  
       
     for (var i = 0; i < positions.length; i += 3) {  
-        // 向下飘落  
         positions[i + 1] -= 0.03;  
-        // 左右摇摆  
         positions[i] += (Math.random() - 0.5) * 0.02;  
           
-        // 循环到顶部  
         if (positions[i + 1] < -6) {  
             positions[i + 1] = 6;  
             positions[i] = (Math.random() - 0.5) * 12;  
@@ -347,25 +349,20 @@ function formTree() {
         for (var i = 0; i < positions.length / 3; i++) {  
             var idx = i * 3;  
               
-            // 位置渐变  
             positions[idx] = snowPositions[idx] + (treePositions[idx] - snowPositions[idx]) * ease;  
             positions[idx + 1] = snowPositions[idx + 1] + (treePositions[idx + 1] - snowPositions[idx + 1]) * ease;  
             positions[idx + 2] = snowPositions[idx + 2] + (treePositions[idx + 2] - snowPositions[idx + 2]) * ease;  
               
-            // 颜色渐变（白色 → 圣诞色）  
             var colorChoice = (i % 10) / 10;  
             if (colorChoice < 0.7) {  
-                // 绿色  
                 colors[idx] = 1 - ease * 0.8;  
                 colors[idx + 1] = 1 - ease * 0.3;  
                 colors[idx + 2] = 1 - ease * 0.8;  
             } else if (colorChoice < 0.85) {  
-                // 金色  
                 colors[idx] = 1;  
                 colors[idx + 1] = 1 - ease * 0.16;  
                 colors[idx + 2] = 1 - ease;  
             } else {  
-                // 红色  
                 colors[idx] = 1;  
                 colors[idx + 1] = 1 - ease * 0.8;  
                 colors[idx + 2] = 1 - ease * 0.8;  
@@ -403,14 +400,29 @@ function showStar() {
     fadeIn();  
 }  
   
-// ==================== 移动树到右上角 ====================  
+// ==================== 移动树到角落（修复竖屏问题） ====================  
 function moveTreeToCorner() {  
     if (!particles) return;  
       
     var duration = 1000;  
     var startTime = Date.now();  
     var startX = 0, startY = 0;  
-    var targetX = 2.5, targetY = 1.5;  
+      
+    // 根据屏幕比例动态计算目标位置  
+    var isPortrait = window.innerHeight > window.innerWidth;  
+    var targetX, targetY, targetScale;  
+      
+    if (isPortrait) {  
+        // 竖屏（手机）：树移到右上角但不要太靠边  
+        targetX = 1.2;  
+        targetY = 2.0;  
+        targetScale = 0.35;  
+    } else {  
+        // 横屏（电脑）：树移到右上角  
+        targetX = 2.5;  
+        targetY = 1.5;  
+        targetScale = 0.4;  
+    }  
       
     function animate() {  
         var elapsed = Date.now() - startTime;  
@@ -419,13 +431,15 @@ function moveTreeToCorner() {
           
         particles.position.x = startX + (targetX - startX) * ease;  
         particles.position.y = startY + (targetY - startY) * ease;  
-        particles.scale.setScalar(1 - ease * 0.6);  
+        particles.scale.setScalar(1 - ease * (1 - targetScale));  
           
         if (star) {  
             star.position.x = particles.position.x;  
             star.position.y = particles.position.y;  
-            star.scale.setScalar(1 - ease * 0.6);  
+            star.scale.setScalar(1 - ease * (1 - targetScale));  
         }  
+          
+        renderer.render(scene, camera3d);  
           
         if (progress < 1) requestAnimationFrame(animate);  
     }  
@@ -518,7 +532,6 @@ function detectFace() {
 function onFaceResults(results) {  
     hatCtx.clearRect(0, 0, hatCanvas.width, hatCanvas.height);  
       
-    // 绘制摄像头  
     if (video.readyState >= 2) {  
         cameraCtx.save();  
         cameraCtx.translate(cameraCanvas.width, 0);  
@@ -618,7 +631,6 @@ fogCanvas.addEventListener('touchend', function() { isDrawing = false; });
 startBtn.addEventListener('click', function() {  
     startBtn.textContent = '启动中...';  
       
-    // iOS 音频预热  
     bgm.muted = true;  
     bgm.volume = 0;  
     bgm.play().catch(function() {});  
