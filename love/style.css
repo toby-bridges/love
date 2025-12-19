@@ -1,84 +1,121 @@
-/* style.css - 强制美化代码 */  
-body, html {  
+* {  
     margin: 0;  
     padding: 0;  
-    width: 100%;  
-    height: 100%;  
-    overflow: hidden; /* 防止出现滚动条 */  
-    font-family: 'Arial', sans-serif;  
-    background-color: #000; /* 黑色背景，显眼 */  
+    box-sizing: border-box;  
+    -webkit-tap-highlight-color: transparent;  
+    -webkit-touch-callout: none;  
+    -webkit-user-select: none;  
+    user-select: none;  
 }  
   
-/* 让视频和画布占满全屏 */  
-#container {  
-    position: absolute;  
-    top: 0;  
-    left: 0;  
+html, body {  
     width: 100%;  
     height: 100%;  
-    z-index: 1;  
+    overflow: hidden;  
+    background: #000;  
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;  
 }  
   
-video, canvas {  
-    position: absolute;  
+/* 隐藏原始视频 */  
+#video {  
+    display: none;  
+}  
+  
+/* 摄像头画布 */  
+#camera-canvas {  
+    position: fixed;  
     top: 0;  
     left: 0;  
     width: 100%;  
     height: 100%;  
     object-fit: cover;  
+    z-index: 1;  
 }  
   
-/* UI 界面：绝对居中 */  
-#ui-layer {  
-    position: absolute;  
+/* 雾气画布 */  
+#fog-canvas {  
+    position: fixed;  
     top: 0;  
     left: 0;  
     width: 100%;  
     height: 100%;  
-    z-index: 10; /* 保证在最上层 */  
-    display: flex; /* 使用弹性布局 */  
-    justify-content: center; /* 水平居中 */  
-    align-items: center; /* 垂直居中 */  
-    background: rgba(0, 0, 0, 0.5); /* 半透明黑色背景，让字更清楚 */  
+    z-index: 2;  
+    cursor: crosshair;  
 }  
   
-/* 欢迎界面的内容盒子 */  
-#start-screen {  
-    text-align: center;  
+/* 开始按钮遮罩 */  
+#start-overlay {  
+    position: fixed;  
+    top: 0;  
+    left: 0;  
+    width: 100%;  
+    height: 100%;  
+    background: rgba(0, 0, 0, 0.8);  
+    display: flex;  
+    justify-content: center;  
+    align-items: center;  
+    z-index: 100;  
+}  
+  
+#start-btn {  
+    padding: 20px 50px;  
+    font-size: 24px;  
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);  
     color: white;  
-    background: rgba(255, 255, 255, 0.1);  
-    padding: 40px;  
-    border-radius: 20px;  
-    backdrop-filter: blur(10px); /* 磨砂玻璃效果 */  
-    border: 1px solid rgba(255, 255, 255, 0.2);  
-}  
-  
-h1 {  
-    margin-bottom: 20px;  
-    font-size: 2em;  
-    text-shadow: 0 0 10px #ff00de;  
-}  
-  
-p {  
-    margin-bottom: 30px;  
-    font-size: 1.2em;  
-    color: #ddd;  
-}  
-  
-/* 那个按钮的样式 */  
-button {  
-    padding: 15px 40px;  
-    font-size: 1.2em;  
-    cursor: pointer;  
-    background: linear-gradient(45deg, #ff3366, #ff6b6b);  
     border: none;  
     border-radius: 50px;  
-    color: white;  
-    font-weight: bold;  
-    box-shadow: 0 5px 15px rgba(255, 51, 102, 0.4);  
-    transition: transform 0.2s;  
+    cursor: pointer;  
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);  
+    transition: transform 0.2s, box-shadow 0.2s;  
 }  
   
-button:hover {  
-    transform: scale(1.05); /* 鼠标放上去变大一点 */  
+#start-btn:hover {  
+    transform: scale(1.05);  
+    box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);  
+}  
+  
+#start-btn:active {  
+    transform: scale(0.98);  
+}  
+  
+/* 提示文字 */  
+#hint {  
+    position: fixed;  
+    bottom: 15%;  
+    left: 50%;  
+    transform: translateX(-50%);  
+    color: white;  
+    font-size: 20px;  
+    text-shadow: 0 2px 10px rgba(0,0,0,0.8);  
+    z-index: 10;  
+    animation: fadeInOut 2s ease-in-out infinite;  
+    pointer-events: none;  
+}  
+  
+@keyframes fadeInOut {  
+    0%, 100% { opacity: 0.5; }  
+    50% { opacity: 1; }  
+}  
+  
+/* 截图闪光效果 */  
+#flash {  
+    position: fixed;  
+    top: 0;  
+    left: 0;  
+    width: 100%;  
+    height: 100%;  
+    background: white;  
+    opacity: 0;  
+    pointer-events: none;  
+    z-index: 200;  
+    transition: opacity 0.1s;  
+}  
+  
+#flash.active {  
+    opacity: 1;  
+}  
+  
+/* 隐藏类 */  
+.hidden {  
+    display: none !important;  
 }  
