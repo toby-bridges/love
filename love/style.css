@@ -2,10 +2,6 @@
     margin: 0;  
     padding: 0;  
     box-sizing: border-box;  
-    -webkit-tap-highlight-color: transparent;  
-    -webkit-touch-callout: none;  
-    -webkit-user-select: none;  
-    user-select: none;  
 }  
   
 html, body {  
@@ -26,7 +22,6 @@ html, body {
     left: 0;  
     width: 100%;  
     height: 100%;  
-    object-fit: cover;  
     z-index: 1;  
 }  
   
@@ -37,7 +32,6 @@ html, body {
     width: 100%;  
     height: 100%;  
     z-index: 2;  
-    cursor: crosshair;  
 }  
   
 #three-container {  
@@ -47,6 +41,17 @@ html, body {
     width: 100%;  
     height: 100%;  
     z-index: 3;  
+    pointer-events: none;  
+    display: none;  
+}  
+  
+#hat-canvas {  
+    position: fixed;  
+    top: 0;  
+    left: 0;  
+    width: 100%;  
+    height: 100%;  
+    z-index: 4;  
     pointer-events: none;  
     display: none;  
 }  
@@ -72,16 +77,6 @@ html, body {
     border: none;  
     border-radius: 50px;  
     cursor: pointer;  
-    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);  
-    transition: transform 0.2s, box-shadow 0.2s;  
-}  
-  
-#start-btn:hover {  
-    transform: scale(1.05);  
-}  
-  
-#start-btn:active {  
-    transform: scale(0.98);  
 }  
   
 #hint {  
@@ -111,7 +106,7 @@ html, body {
     font-size: 120px;  
     font-weight: bold;  
     color: white;  
-    text-shadow: 0 0 30px rgba(255, 215, 0, 0.8), 0 0 60px rgba(255, 215, 0, 0.5);  
+    text-shadow: 0 0 30px rgba(255, 215, 0, 0.8);  
     z-index: 60;  
     opacity: 0;  
     pointer-events: none;  
@@ -119,13 +114,6 @@ html, body {
   
 #countdown.show {  
     opacity: 1;  
-    animation: countdownPulse 1s ease-in-out;  
-}  
-  
-@keyframes countdownPulse {  
-    0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }  
-    50% { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }  
-    100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }  
 }  
   
 #flash {  
@@ -143,6 +131,63 @@ html, body {
   
 #flash.active {  
     opacity: 1;  
+}  
+  
+#final-display {  
+    position: fixed;  
+    top: 0;  
+    left: 0;  
+    width: 100%;  
+    height: 100%;  
+    background: rgba(0, 0, 0, 0.95);  
+    z-index: 300;  
+    display: none;  
+    justify-content: center;  
+    align-items: center;  
+    flex-direction: column;  
+}  
+  
+#final-display.show {  
+    display: flex;  
+}  
+  
+.photo-container {  
+    display: flex;  
+    justify-content: center;  
+    align-items: center;  
+    flex-wrap: wrap;  
+    gap: 20px;  
+    padding: 20px;  
+}  
+  
+.polaroid {  
+    background: white;  
+    padding: 10px 10px 40px 10px;  
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);  
+    animation: dropIn 0.8s ease-out forwards;  
+    opacity: 0;  
+}  
+  
+.polaroid:nth-child(1) { transform: rotate(-5deg); animation-delay: 0.2s; }  
+.polaroid:nth-child(2) { transform: rotate(3deg); animation-delay: 0.5s; }  
+.polaroid:nth-child(3) { transform: rotate(-2deg); animation-delay: 0.8s; }  
+  
+@keyframes dropIn {  
+    0% { transform: translateY(-100px); opacity: 0; }  
+    100% { transform: translateY(0); opacity: 1; }  
+}  
+  
+.polaroid img {  
+    width: 200px;  
+    height: 150px;  
+    object-fit: cover;  
+}  
+  
+.final-title {  
+    color: white;  
+    font-size: 28px;  
+    margin-bottom: 30px;  
+    text-shadow: 0 0 20px rgba(255, 215, 0, 0.8);  
 }  
   
 .hidden {  
