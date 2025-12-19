@@ -1,36 +1,41 @@
 <!DOCTYPE html>  
-<html lang="zh-CN">  
+<html>  
 <head>  
     <meta charset="UTF-8">  
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">  
-    <title>Christmas Surprise</title>  
-    <link rel="stylesheet" href="style.css">  
-    <!-- 引入 Three.js 和 MediaPipe -->  
-    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>  
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision/vision_bundle.js" crossorigin="anonymous"></script>  
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">  
+    <title>Test</title>  
+    <style>  
+        * { margin: 0; padding: 0; }  
+        body { background: #000; overflow: hidden; }  
+        #video { position: absolute; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }  
+        #fog { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); }  
+        #btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); padding: 20px 40px; font-size: 20px; z-index: 10; }  
+    </style>  
 </head>  
 <body>  
+    <video id="video" autoplay playsinline></video>  
+    <div id="fog"></div>  
+    <button id="btn">点击开始</button>  
   
-    <!-- 背景音乐 -->  
-    <audio id="bgm" loop playsinline>  
-        <source src="music.mp3" type="audio/mpeg">  
-    </audio>  
+    <script>  
+        const video = document.getElementById('video');  
+        const fog = document.getElementById('fog');  
+        const btn = document.getElementById('btn');  
   
-    <!-- 主容器 -->  
-    <div id="container">  
-        <video id="webcam" autoplay playsinline muted></video>  
-        <canvas id="output-canvas"></canvas>  
-    </div>  
-  
-    <!-- UI 界面 -->  
-    <div id="ui-layer">  
-        <div id="start-screen">  
-            <h1>🎄 准备好迎接惊喜了吗？</h1>  
-            <p>为了最佳体验，请允许使用摄像头和声音</p>  
-            <button id="start-btn">开启魔法</button>  
-        </div>  
-    </div>  
-  
-    <script type="module" src="script.js"></script>  
+        btn.onclick = async function() {  
+            btn.style.display = 'none';  
+            try {  
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });  
+                video.srcObject = stream;  
+                // 摄像头成功后，3秒后雾气消失（模拟擦除成功）  
+                setTimeout(() => {  
+                    fog.style.transition = 'opacity 2s';  
+                    fog.style.opacity = '0';  
+                }, 3000);  
+            } catch (e) {  
+                alert('摄像头启动失败: ' + e.message);  
+            }  
+        };  
+    </script>  
 </body>  
 </html>  
