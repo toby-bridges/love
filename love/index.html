@@ -5,40 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">  
     <title>Merry Christmas</title>  
     <link rel="stylesheet" href="style.css">  
-    <!-- Three.js 3D引擎 -->  
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>  
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>  
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>  
 </head>  
 <body>  
-    <!-- 背景音乐 -->  
     <audio id="bgm" loop preload="auto">  
         <source src="music.mp3" type="audio/mpeg">  
     </audio>  
   
-    <!-- 摄像头视频 -->  
     <video id="video" autoplay playsinline></video>  
-  
-    <!-- 摄像头画布 -->  
     <canvas id="camera-canvas"></canvas>  
-  
-    <!-- 雾气画布 -->  
     <canvas id="fog-canvas"></canvas>  
-  
-    <!-- 3D粒子画布 -->  
     <div id="three-container"></div>  
+    <canvas id="hat-canvas"></canvas>  
+    <img id="hat-img" src="hat.png" crossorigin="anonymous" style="display:none;">  
   
-    <!-- 开始按钮 -->  
     <div id="start-overlay">  
         <button id="start-btn">❄️ 点击开始 ❄️</button>  
     </div>  
   
-    <!-- 提示文字 -->  
     <div id="hint"></div>  
-  
-    <!-- 倒计时 -->  
     <div id="countdown"></div>  
-  
-    <!-- 闪光效果 -->  
     <div id="flash"></div>  
+    <div id="final-display"></div>  
   
     <script src="script.js"></script>  
 </body>  
