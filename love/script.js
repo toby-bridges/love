@@ -16,44 +16,36 @@ var flash = document.getElementById('flash');
 var bgm = document.getElementById('bgm');  
 var finalDisplay = document.getElementById('final-display');  
   
-// 截图存储  
-var photo1 = null;  
-var photo2 = null;  
-var photo3 = null;  
-  
-// 当前步骤  
+var photo1 = null, photo2 = null, photo3 = null;  
 var currentStep = 0;  
-  
-// 擦除相关  
 var isDrawing = false;  
-var totalPixels = 0;  
 var clearedPixels = 0;  
-var lastX = 0;  
-var lastY = 0;  
+var lastX = 0, lastY = 0;  
+var isTouchDevice = false;  
   
-// Three.js 相关  
+// Three.js  
 var scene, camera3d, renderer, particles, star;  
-var treePositions = [];  
-var snowPositions = [];  
-var isSnowing = true;  
-var isTreeFormed = false;  
+var treePositions = [], snowPositions = [], auraPositions = [];  
+var isSnowing = true, isTreeFormed = false, isAuraMode = false;  
+var auraTime = 0;  
   
-// FaceMesh 相关  
+// 手势检测  
+var hands = null;  
+var handsClaspedStart = 0;  
+var handsClasped = false;  
+var step2TimeoutId = null;  
+  
+// 人脸检测  
 var faceMesh = null;  
   
-// ==================== 初始化画布尺寸 ====================  
+// ==================== 工具函数 ====================  
 function resizeCanvas() {  
-    var w = window.innerWidth;  
-    var h = window.innerHeight;  
-    cameraCanvas.width = w;  
-    cameraCanvas.height = h;  
-    fogCanvas.width = w;  
-    fogCanvas.height = h;  
-    hatCanvas.width = w;  
-    hatCanvas.height = h;  
+    var w = window.innerWidth, h = window.innerHeight;  
+    cameraCanvas.width = fogCanvas.width = hatCanvas.width = w;  
+    cameraCanvas.height = fogCanvas.height = hatCanvas.height = h;  
 }  
   
-// ==================== 启动摄像头 ====================  
+// ==================== 摄像头 ====================  
 function startCamera() {  
     return navigator.mediaDevices.getUserMedia({  
         video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },  
@@ -61,15 +53,13 @@ function startCamera() {
     }).then(function(stream) {  
         video.srcObject = stream;  
         return video.play();  
-    }).then(function() {  
-        return true;  
-    }).catch(function(e) {  
+    }).then(function() { return true; })  
+    .catch(function(e) {  
         alert('无法访问摄像头: ' + e.message);  
         return false;  
     });  
 }  
   
-// ==================== 绘制摄像头画面 ====================  
 function drawCamera() {  
     if (video.readyState >= 2) {  
         cameraCtx.save();  
@@ -78,32 +68,25 @@ function drawCamera() {
         cameraCtx.drawImage(video, 0, 0, cameraCanvas.width, cameraCanvas.height);  
         cameraCtx.restore();  
     }  
-    if (currentStep !== 3) {  
-        requestAnimationFrame(drawCamera);  
-    }  
+    if (currentStep !== 3) requestAnimationFrame(drawCamera);  
 }  
   
-// ==================== 初始化雾气 ====================  
+// ==================== 第一步：擦雾气 ====================  
 function initFog() {  
     fogCtx.fillStyle = 'rgba(255, 255, 255, 0.92)';  
     fogCtx.fillRect(0, 0, fogCanvas.width, fogCanvas.height);  
-      
-    for (var i = 0; i < 30000; i++) {  
+    for (var i = 0; i < 20000; i++) {  
         var x = Math.random() * fogCanvas.width;  
         var y = Math.random() * fogCanvas.height;  
-        var gray = 200 + Math.random() * 55;  
-        fogCtx.fillStyle = 'rgba(' + gray + ',' + gray + ',' + gray + ',' + (Math.random() * 0.3) + ')';  
+        var g = 200 + Math.random() * 55;  
+        fogCtx.fillStyle = 'rgba(' + g + ',' + g + ',' + g + ',' + (Math.random() * 0.3) + ')';  
         fogCtx.fillRect(x, y, 2, 2);  
     }  
-      
-    totalPixels = fogCanvas.width * fogCanvas.height;  
     clearedPixels = 0;  
 }  
   
-// ==================== 擦除雾气 ====================  
 function clearFog(x, y) {  
-    var radius = 40;  
-      
+    var radius = isTouchDevice ? 45 : 70;  
     fogCtx.globalCompositeOperation = 'destination-out';  
     fogCtx.beginPath();  
     fogCtx.lineWidth = radius * 2;  
@@ -112,426 +95,299 @@ function clearFog(x, y) {
     fogCtx.lineTo(x, y);  
     fogCtx.stroke();  
     fogCtx.globalCompositeOperation = 'source-over';  
-      
-    lastX = x;  
-    lastY = y;  
+    lastX = x; lastY = y;  
     clearedPixels += radius * 2;  
       
-    var progress = Math.min((clearedPixels / totalPixels) * 100, 100);  
-      
-    if (progress >= 8 && currentStep === 1) {  
+    var total = fogCanvas.width * fogCanvas.height;  
+    var progress = (clearedPixels / total) * 100;  
+    if (progress >= 6 && currentStep === 1) {  
         currentStep = 2;  
         takePhoto(1);  
         setTimeout(goToStep2, 500);  
     }  
 }  
   
-// ==================== 截图功能（修复版） ====================  
+// ==================== 截图 ====================  
 function takePhoto(step) {  
     flash.classList.add('active');  
     setTimeout(function() { flash.classList.remove('active'); }, 150);  
       
-    var tempCanvas = document.createElement('canvas');  
-    tempCanvas.width = cameraCanvas.width;  
-    tempCanvas.height = cameraCanvas.height;  
-    var tempCtx = tempCanvas.getContext('2d');  
+    var tc = document.createElement('canvas');  
+    tc.width = cameraCanvas.width; tc.height = cameraCanvas.height;  
+    var tx = tc.getContext('2d');  
+    tx.drawImage(cameraCanvas, 0, 0);  
       
-    // 1. 先画摄像头画面  
-    tempCtx.drawImage(cameraCanvas, 0, 0);  
-      
-    // 2. 第一张：叠加雾气  
-    if (step === 1) {  
-        tempCtx.drawImage(fogCanvas, 0, 0);  
-    }  
-      
-    // 3. 第二张：叠加圣诞树（修复：确保renderer存在且有内容）  
-    if (step === 2 && renderer && renderer.domElement) {  
-        // 先渲染一帧确保内容是最新的  
+    if (step === 1) tx.drawImage(fogCanvas, 0, 0);  
+    if ((step === 2 || step === 3) && renderer) {  
         renderer.render(scene, camera3d);  
-        tempCtx.drawImage(renderer.domElement, 0, 0, tempCanvas.width, tempCanvas.height);  
+        tx.drawImage(renderer.domElement, 0, 0, tc.width, tc.height);  
     }  
+    if (step === 3) tx.drawImage(hatCanvas, 0, 0);  
       
-    // 4. 第三张：叠加帽子  
-    if (step === 3) {  
-        tempCtx.drawImage(hatCanvas, 0, 0);  
-    }  
-      
-    var data = tempCanvas.toDataURL('image/jpeg', 0.85);  
+    var data = tc.toDataURL('image/jpeg', 0.85);  
     if (step === 1) photo1 = data;  
     if (step === 2) photo2 = data;  
     if (step === 3) photo3 = data;  
-      
-    console.log('📸 第' + step + '张照片已保存');  
 }  
   
-// ==================== 进入第二步：圣诞树 ====================  
+// ==================== 第二步：圣诞树 ====================  
 function goToStep2() {  
-    hint.textContent = '';  
-    hint.classList.remove('show');  
-      
+    hint.textContent = ''; hint.classList.remove('show');  
     fogCanvas.style.transition = 'opacity 1.5s';  
     fogCanvas.style.opacity = '0';  
       
     setTimeout(function() {  
         fogCanvas.style.display = 'none';  
-          
-        // 播放音乐  
-        bgm.muted = false;  
-        bgm.volume = 1;  
-          
-        // 初始化3D场景  
+        bgm.muted = false; bgm.volume = 1;  
         initThreeJS();  
         threeContainer.style.display = 'block';  
-          
-        // 开始雪花飘落动画  
         animateSnow();  
-          
-        // 3秒后开始汇聚成树  
+        setTimeout(formTree, 3000);  
+        setTimeout(transformToAura, 6000);  
         setTimeout(function() {  
-            formTree();  
-        }, 3000);  
-          
-        // 5秒后移动树到角落  
-        setTimeout(function() {  
-            moveTreeToCorner();  
-        }, 5500);  
-          
-        // 6秒后显示许愿提示  
-        setTimeout(function() {  
-            hint.textContent = '🙏 闭上眼睛，许个愿吧';  
+            hint.textContent = '十指交叉，许个愿吧 🙏';  
             hint.classList.add('show');  
-        }, 6000);  
-          
-        // 8秒后开始倒计时  
-        setTimeout(function() {  
-            startCountdown(3);  
-        }, 8000);  
-          
+            initHands();  
+            // 10秒超时自动截图  
+            step2TimeoutId = setTimeout(function() {  
+                if (currentStep === 2) {  
+                    takePhoto(2);  
+                    setTimeout(goToStep3, 500);  
+                }  
+            }, 10000);  
+        }, 7000);  
     }, 1500);  
 }  
   
-// ==================== Three.js 初始化 ====================  
 function initThreeJS() {  
-    var width = window.innerWidth;  
-    var height = window.innerHeight;  
-      
+    var w = window.innerWidth, h = window.innerHeight;  
     scene = new THREE.Scene();  
-      
-    camera3d = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);  
+    camera3d = new THREE.PerspectiveCamera(75, w / h, 0.1, 1000);  
     camera3d.position.z = 5;  
-      
     renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });  
-    renderer.setSize(width, height);  
+    renderer.setSize(w, h);  
     renderer.setClearColor(0x000000, 0);  
     threeContainer.appendChild(renderer.domElement);  
       
-    // 创建粒子  
-    var particleCount = 2500;  
-    var geometry = new THREE.BufferGeometry();  
-    var positions = new Float32Array(particleCount * 3);  
-    var colors = new Float32Array(particleCount * 3);  
+    var count = 2000;  
+    var geo = new THREE.BufferGeometry();  
+    var pos = new Float32Array(count * 3);  
+    var col = new Float32Array(count * 3);  
       
-    for (var i = 0; i < particleCount; i++) {  
-        // 雪花初始位置（满屏随机分布）  
-        var snowX = (Math.random() - 0.5) * 12;  
-        var snowY = (Math.random() - 0.5) * 12;  
-        var snowZ = (Math.random() - 0.5) * 6;  
-        snowPositions.push(snowX, snowY, snowZ);  
+    for (var i = 0; i < count; i++) {  
+        var sx = (Math.random() - 0.5) * 12;  
+        var sy = (Math.random() - 0.5) * 12;  
+        var sz = (Math.random() - 0.5) * 6;  
+        snowPositions.push(sx, sy, sz);  
           
-        // 圣诞树形状目标位置  
-        var y = Math.random() * 4 - 2;  
-        var radius = (2 - y) * 0.5 * Math.random();  
-        var angle = Math.random() * Math.PI * 2;  
-        var treeX = Math.cos(angle) * radius;  
-        var treeZ = Math.sin(angle) * radius * 0.5;  
-        treePositions.push(treeX, y, treeZ);  
+        var ty = Math.random() * 4 - 2;  
+        var tr = (2 - ty) * 0.5 * Math.random();  
+        var ta = Math.random() * Math.PI * 2;  
+        treePositions.push(Math.cos(ta) * tr, ty, Math.sin(ta) * tr * 0.5);  
           
-        positions[i * 3] = snowX;  
-        positions[i * 3 + 1] = snowY;  
-        positions[i * 3 + 2] = snowZ;  
+        var aa = Math.random() * Math.PI * 2;  
+        var ar = 2.5 + Math.random() * 2;  
+        auraPositions.push(Math.cos(aa) * ar, (Math.random() - 0.5) * 4, Math.sin(aa) * ar * 0.3 - 1);  
           
-        // 雪花颜色：白色  
-        colors[i * 3] = 1;  
-        colors[i * 3 + 1] = 1;  
-        colors[i * 3 + 2] = 1;  
+        pos[i * 3] = sx; pos[i * 3 + 1] = sy; pos[i * 3 + 2] = sz;  
+        col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = 1;  
     }  
       
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));  
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));  
-      
-    var material = new THREE.PointsMaterial({  
-        size: 0.1,  
-        vertexColors: true,  
-        transparent: true,  
-        opacity: 0.9,  
-        blending: THREE.AdditiveBlending  
-    });  
-      
-    particles = new THREE.Points(geometry, material);  
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));  
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));  
+    var mat = new THREE.PointsMaterial({ size: 0.1, vertexColors: true, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });  
+    particles = new THREE.Points(geo, mat);  
     scene.add(particles);  
-      
-    // 创建星星  
     createStar();  
 }  
   
-// ==================== 创建星星 ====================  
 function createStar() {  
-    var starGeometry = new THREE.BufferGeometry();  
-    var starCount = 50;  
-    var starPositions = new Float32Array(starCount * 3);  
-    var starColors = new Float32Array(starCount * 3);  
-      
-    for (var i = 0; i < starCount; i++) {  
-        var angle = (i / starCount) * Math.PI * 2;  
-        var isOuter = i % 2 === 0;  
-        var r = isOuter ? 0.3 : 0.15;  
-          
-        starPositions[i * 3] = Math.cos(angle) * r;  
-        starPositions[i * 3 + 1] = 2.2 + Math.sin(angle) * r;  
-        starPositions[i * 3 + 2] = 0;  
-          
-        starColors[i * 3] = 1;  
-        starColors[i * 3 + 1] = 0.85;  
-        starColors[i * 3 + 2] = 0;  
+    var geo = new THREE.BufferGeometry();  
+    var pos = new Float32Array(50 * 3);  
+    var col = new Float32Array(50 * 3);  
+    for (var i = 0; i < 50; i++) {  
+        var a = (i / 50) * Math.PI * 2;  
+        var r = (i % 2 === 0) ? 0.3 : 0.15;  
+        pos[i * 3] = Math.cos(a) * r;  
+        pos[i * 3 + 1] = 2.2 + Math.sin(a) * r;  
+        pos[i * 3 + 2] = 0;  
+        col[i * 3] = 1; col[i * 3 + 1] = 0.85; col[i * 3 + 2] = 0;  
     }  
-      
-    starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));  
-    starGeometry.setAttribute('color', new THREE.BufferAttribute(starColors, 3));  
-      
-    var starMaterial = new THREE.PointsMaterial({  
-        size: 0.2,  
-        vertexColors: true,  
-        transparent: true,  
-        opacity: 0,  
-        blending: THREE.AdditiveBlending  
-    });  
-      
-    star = new THREE.Points(starGeometry, starMaterial);  
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));  
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));  
+    var mat = new THREE.PointsMaterial({ size: 0.2, vertexColors: true, transparent: true, opacity: 0, blending: THREE.AdditiveBlending });  
+    star = new THREE.Points(geo, mat);  
     scene.add(star);  
 }  
   
-// ==================== 雪花飘落动画 ====================  
 function animateSnow() {  
     if (!particles || !isSnowing) return;  
-      
-    var positions = particles.geometry.attributes.position.array;  
-      
-    for (var i = 0; i < positions.length; i += 3) {  
-        positions[i + 1] -= 0.03;  
-        positions[i] += (Math.random() - 0.5) * 0.02;  
-          
-        if (positions[i + 1] < -6) {  
-            positions[i + 1] = 6;  
-            positions[i] = (Math.random() - 0.5) * 12;  
-        }  
+    var p = particles.geometry.attributes.position.array;  
+    for (var i = 0; i < p.length; i += 3) {  
+        p[i + 1] -= 0.03;  
+        p[i] += (Math.random() - 0.5) * 0.02;  
+        if (p[i + 1] < -6) { p[i + 1] = 6; p[i] = (Math.random() - 0.5) * 12; }  
     }  
-      
     particles.geometry.attributes.position.needsUpdate = true;  
     renderer.render(scene, camera3d);  
-      
     requestAnimationFrame(animateSnow);  
 }  
   
-// ==================== 汇聚成圣诞树 ====================  
 function formTree() {  
     isSnowing = false;  
+    var p = particles.geometry.attributes.position.array;  
+    var c = particles.geometry.attributes.color.array;  
+    var start = Date.now();  
       
-    var positions = particles.geometry.attributes.position.array;  
-    var colors = particles.geometry.attributes.color.array;  
-    var duration = 2000;  
-    var startTime = Date.now();  
-      
-    function animate() {  
-        var elapsed = Date.now() - startTime;  
-        var progress = Math.min(elapsed / duration, 1);  
-        var ease = 1 - Math.pow(1 - progress, 3);  
-          
-        for (var i = 0; i < positions.length / 3; i++) {  
+    function anim() {  
+        var t = Math.min((Date.now() - start) / 2000, 1);  
+        var e = 1 - Math.pow(1 - t, 3);  
+        for (var i = 0; i < p.length / 3; i++) {  
             var idx = i * 3;  
-              
-            positions[idx] = snowPositions[idx] + (treePositions[idx] - snowPositions[idx]) * ease;  
-            positions[idx + 1] = snowPositions[idx + 1] + (treePositions[idx + 1] - snowPositions[idx + 1]) * ease;  
-            positions[idx + 2] = snowPositions[idx + 2] + (treePositions[idx + 2] - snowPositions[idx + 2]) * ease;  
-              
-            var colorChoice = (i % 10) / 10;  
-            if (colorChoice < 0.7) {  
-                colors[idx] = 1 - ease * 0.8;  
-                colors[idx + 1] = 1 - ease * 0.3;  
-                colors[idx + 2] = 1 - ease * 0.8;  
-            } else if (colorChoice < 0.85) {  
-                colors[idx] = 1;  
-                colors[idx + 1] = 1 - ease * 0.16;  
-                colors[idx + 2] = 1 - ease;  
-            } else {  
-                colors[idx] = 1;  
-                colors[idx + 1] = 1 - ease * 0.8;  
-                colors[idx + 2] = 1 - ease * 0.8;  
-            }  
+            p[idx] = snowPositions[idx] + (treePositions[idx] - snowPositions[idx]) * e;  
+            p[idx + 1] = snowPositions[idx + 1] + (treePositions[idx + 1] - snowPositions[idx + 1]) * e;  
+            p[idx + 2] = snowPositions[idx + 2] + (treePositions[idx + 2] - snowPositions[idx + 2]) * e;  
+            var cc = (i % 10) / 10;  
+            if (cc < 0.7) { c[idx] = 1 - e * 0.8; c[idx + 1] = 1 - e * 0.3; c[idx + 2] = 1 - e * 0.8; }  
+            else if (cc < 0.85) { c[idx] = 1; c[idx + 1] = 1 - e * 0.16; c[idx + 2] = 1 - e; }  
+            else { c[idx] = 1; c[idx + 1] = 1 - e * 0.8; c[idx + 2] = 1 - e * 0.8; }  
         }  
-          
         particles.geometry.attributes.position.needsUpdate = true;  
         particles.geometry.attributes.color.needsUpdate = true;  
         particles.rotation.y += 0.01;  
         if (star) star.rotation.y = particles.rotation.y;  
-          
         renderer.render(scene, camera3d);  
-          
-        if (progress < 1) {  
-            requestAnimationFrame(animate);  
-        } else {  
-            isTreeFormed = true;  
-            showStar();  
-            animateTreeRotation();  
-        }  
+        if (t < 1) requestAnimationFrame(anim);  
+        else { isTreeFormed = true; showStar(); animateTree(); }  
     }  
-      
-    animate();  
+    anim();  
 }  
   
-// ==================== 显示星星 ====================  
 function showStar() {  
     if (!star) return;  
-    var opacity = 0;  
-    function fadeIn() {  
-        opacity += 0.05;  
-        star.material.opacity = Math.min(opacity, 1);  
-        if (opacity < 1) requestAnimationFrame(fadeIn);  
-    }  
-    fadeIn();  
+    var o = 0;  
+    function f() { o += 0.05; star.material.opacity = Math.min(o, 1); if (o < 1) requestAnimationFrame(f); }  
+    f();  
 }  
   
-// ==================== 移动树到角落（修复竖屏问题） ====================  
-function moveTreeToCorner() {  
-    if (!particles) return;  
-      
-    var duration = 1000;  
-    var startTime = Date.now();  
-    var startX = 0, startY = 0;  
-      
-    // 根据屏幕比例动态计算目标位置  
-    var isPortrait = window.innerHeight > window.innerWidth;  
-    var targetX, targetY, targetScale;  
-      
-    if (isPortrait) {  
-        // 竖屏（手机）：树移到右上角但不要太靠边  
-        targetX = 1.2;  
-        targetY = 2.0;  
-        targetScale = 0.35;  
-    } else {  
-        // 横屏（电脑）：树移到右上角  
-        targetX = 2.5;  
-        targetY = 1.5;  
-        targetScale = 0.4;  
-    }  
-      
-    function animate() {  
-        var elapsed = Date.now() - startTime;  
-        var progress = Math.min(elapsed / duration, 1);  
-        var ease = 1 - Math.pow(1 - progress, 3);  
-          
-        particles.position.x = startX + (targetX - startX) * ease;  
-        particles.position.y = startY + (targetY - startY) * ease;  
-        particles.scale.setScalar(1 - ease * (1 - targetScale));  
-          
-        if (star) {  
-            star.position.x = particles.position.x;  
-            star.position.y = particles.position.y;  
-            star.scale.setScalar(1 - ease * (1 - targetScale));  
-        }  
-          
-        renderer.render(scene, camera3d);  
-          
-        if (progress < 1) requestAnimationFrame(animate);  
-    }  
-      
-    animate();  
-}  
-  
-// ==================== 圣诞树旋转 ====================  
-function animateTreeRotation() {  
-    if (!particles) return;  
+function animateTree() {  
+    if (!particles || isAuraMode) return;  
     particles.rotation.y += 0.005;  
     if (star) star.rotation.y = particles.rotation.y;  
     renderer.render(scene, camera3d);  
-    requestAnimationFrame(animateTreeRotation);  
+    requestAnimationFrame(animateTree);  
 }  
   
-// ==================== 倒计时 ====================  
-function startCountdown(nextStep) {  
-    var count = 3;  
+function transformToAura() {  
+    isAuraMode = true;  
+    if (star) star.visible = false;  
+    var p = particles.geometry.attributes.position.array;  
+    var sp = [];  
+    for (var i = 0; i < p.length; i++) sp.push(p[i]);  
+    var start = Date.now();  
       
-    function showCount() {  
-        if (count > 0) {  
-            countdown.textContent = count;  
-            countdown.classList.add('show');  
-            setTimeout(function() {  
-                countdown.classList.remove('show');  
-                count--;  
-                setTimeout(showCount, 300);  
-            }, 700);  
-        } else {  
-            countdown.textContent = '📸';  
-            countdown.classList.add('show');  
-            takePhoto(nextStep === 3 ? 2 : 3);  
-            setTimeout(function() {  
-                countdown.classList.remove('show');  
-                if (nextStep === 3) goToStep3();  
-                else if (nextStep === 4) goToStep4();  
-            }, 1000);  
+    function anim() {  
+        var t = Math.min((Date.now() - start) / 2000, 1);  
+        var e = 1 - Math.pow(1 - t, 3);  
+        for (var i = 0; i < p.length / 3; i++) {  
+            var idx = i * 3;  
+            p[idx] = sp[idx] + (auraPositions[idx] - sp[idx]) * e;  
+            p[idx + 1] = sp[idx + 1] + (auraPositions[idx + 1] - sp[idx + 1]) * e;  
+            p[idx + 2] = sp[idx + 2] + (auraPositions[idx + 2] - sp[idx + 2]) * e;  
         }  
+        particles.material.size = 0.1 + e * 0.15;  
+        particles.material.opacity = 0.9 - e * 0.4;  
+        particles.geometry.attributes.position.needsUpdate = true;  
+        renderer.render(scene, camera3d);  
+        if (t < 1) requestAnimationFrame(anim);  
+        else animateAura();  
     }  
-      
-    showCount();  
+    anim();  
 }  
   
-// ==================== 第三步：戴帽子 ====================  
+function animateAura() {  
+    if (!particles || !isAuraMode) return;  
+    auraTime += 0.02;  
+    var p = particles.geometry.attributes.position.array;  
+    var c = particles.geometry.attributes.color.array;  
+    for (var i = 0; i < p.length / 3; i++) {  
+        var idx = i * 3;  
+        var b = Math.sin(auraTime * 2 + i * 0.1) * 0.5 + 0.5;  
+        p[idx + 1] = auraPositions[idx + 1] + Math.sin(auraTime + i * 0.05) * 0.1;  
+        var cp = i % 3;  
+        if (cp === 0) { c[idx] = 1; c[idx + 1] = 0.7 + b * 0.3; c[idx + 2] = b * 0.3; }  
+        else if (cp === 1) { c[idx] = 0.2 + b * 0.2; c[idx + 1] = 0.6 + b * 0.4; c[idx + 2] = 0.2 + b * 0.2; }  
+        else { c[idx] = 0.8 + b * 0.2; c[idx + 1] = 0.2 + b * 0.2; c[idx + 2] = 0.2 + b * 0.1; }  
+    }  
+    particles.rotation.y += 0.003;  
+    particles.material.size = 0.2 + Math.sin(auraTime) * 0.05;  
+    particles.geometry.attributes.position.needsUpdate = true;  
+    particles.geometry.attributes.color.needsUpdate = true;  
+    renderer.render(scene, camera3d);  
+    requestAnimationFrame(animateAura);  
+}  
+  
+// ==================== 手势检测：十指交叉 ====================  
+function initHands() {  
+    hands = new Hands({ locateFile: function(f) { return 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + f; } });  
+    hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });  
+    hands.onResults(onHandsResults);  
+    detectHands();  
+}  
+  
+function detectHands() {  
+    if (currentStep !== 2) return;  
+    if (video.readyState >= 2) hands.send({ image: video });  
+    requestAnimationFrame(detectHands);  
+}  
+  
+function onHandsResults(results) {  
+    if (currentStep !== 2) return;  
+    if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {  
+        var h1 = results.multiHandLandmarks[0][0]; // 手腕  
+        var h2 = results.multiHandLandmarks[1][0];  
+        var dist = Math.sqrt(Math.pow(h1.x - h2.x, 2) + Math.pow(h1.y - h2.y, 2));  
+          
+        if (dist < 0.2) {  
+            if (!handsClasped) { handsClasped = true; handsClaspedStart = Date.now(); }  
+            else if (Date.now() - handsClaspedStart > 1000) {  
+                clearTimeout(step2TimeoutId);  
+                takePhoto(2);  
+                handsClasped = false;  
+                setTimeout(goToStep3, 500);  
+            }  
+        } else { handsClasped = false; }  
+    } else { handsClasped = false; }  
+}  
+  
+// ==================== 第三步：圣诞帽 ====================  
 function goToStep3() {  
     currentStep = 3;  
-    hint.textContent = '🎅 看镜头，准备戴圣诞帽！';  
+    hint.textContent = '看镜头，准备戴圣诞帽 🎅';  
     hint.classList.add('show');  
     hatCanvas.style.display = 'block';  
     initFaceMesh();  
 }  
   
-// ==================== 初始化 FaceMesh ====================  
 function initFaceMesh() {  
-    faceMesh = new FaceMesh({  
-        locateFile: function(file) {  
-            return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/' + file;  
-        }  
-    });  
-      
-    faceMesh.setOptions({  
-        maxNumFaces: 1,  
-        refineLandmarks: true,  
-        minDetectionConfidence: 0.5,  
-        minTrackingConfidence: 0.5  
-    });  
-      
+    faceMesh = new FaceMesh({ locateFile: function(f) { return 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/' + f; } });  
+    faceMesh.setOptions({ maxNumFaces: 1, refineLandmarks: true, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });  
     faceMesh.onResults(onFaceResults);  
     detectFace();  
-      
     setTimeout(function() {  
-        hint.textContent = '✨ 保持微笑！';  
-        setTimeout(function() {  
-            startCountdown(4);  
-        }, 1000);  
-    }, 4000);  
+        hint.textContent = '保持微笑 ✨';  
+        setTimeout(function() { startCountdown(4); }, 1000);  
+    }, 3000);  
 }  
   
-// ==================== 人脸检测循环 ====================  
 function detectFace() {  
     if (currentStep !== 3) return;  
-    if (video.readyState >= 2) {  
-        faceMesh.send({ image: video });  
-    }  
+    if (video.readyState >= 2) faceMesh.send({ image: video });  
     requestAnimationFrame(detectFace);  
 }  
   
-// ==================== 人脸结果处理 ====================  
 function onFaceResults(results) {  
     hatCtx.clearRect(0, 0, hatCanvas.width, hatCanvas.height);  
-      
     if (video.readyState >= 2) {  
         cameraCtx.save();  
         cameraCtx.translate(cameraCanvas.width, 0);  
@@ -539,29 +395,48 @@ function onFaceResults(results) {
         cameraCtx.drawImage(video, 0, 0, cameraCanvas.width, cameraCanvas.height);  
         cameraCtx.restore();  
     }  
-      
-    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {  
-        var landmarks = results.multiFaceLandmarks[0];  
-        var forehead = landmarks[10];  
-        var leftTemple = landmarks[234];  
-        var rightTemple = landmarks[454];  
-          
-        var hatX = (1 - forehead.x) * hatCanvas.width;  
-        var hatY = forehead.y * hatCanvas.height;  
-        var faceWidth = Math.abs(rightTemple.x - leftTemple.x) * hatCanvas.width;  
-        var hatWidth = faceWidth * 2.2;  
-        var hatHeight = hatWidth * (hatImg.naturalHeight / hatImg.naturalWidth);  
-          
-        var deltaX = (1 - rightTemple.x) - (1 - leftTemple.x);  
-        var deltaY = rightTemple.y - leftTemple.y;  
-        var angle = Math.atan2(deltaY, deltaX);  
-          
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0 && hatImg.complete) {  
+        var lm = results.multiFaceLandmarks[0];  
+        var fh = lm[10], lt = lm[234], rt = lm[454];  
+        var hx = (1 - fh.x) * hatCanvas.width;  
+        var hy = fh.y * hatCanvas.height;  
+        var fw = Math.abs(rt.x - lt.x) * hatCanvas.width;  
+        var hw = fw * 2.2;  
+        var hh = hw * (hatImg.naturalHeight / hatImg.naturalWidth);  
+        var dx = (1 - rt.x) - (1 - lt.x);  
+        var dy = rt.y - lt.y;  
+        var angle = Math.atan2(dy, dx);  
         hatCtx.save();  
-        hatCtx.translate(hatX, hatY - hatHeight * 0.3);  
+        hatCtx.translate(hx, hy - hh * 0.3);  
         hatCtx.rotate(angle);  
-        hatCtx.drawImage(hatImg, -hatWidth / 2, -hatHeight / 2, hatWidth, hatHeight);  
+        hatCtx.drawImage(hatImg, -hw / 2, -hh / 2, hw, hh);  
         hatCtx.restore();  
     }  
+}  
+  
+// ==================== 倒计时 ====================  
+function startCountdown(next) {  
+    var c = 3;  
+    function show() {  
+        if (c > 0) {  
+            countdown.textContent = c;  
+            countdown.classList.add('show');  
+            setTimeout(function() {  
+                countdown.classList.remove('show');  
+                c--;  
+                setTimeout(show, 300);  
+            }, 700);  
+        } else {  
+            countdown.textContent = '📸';  
+            countdown.classList.add('show');  
+            takePhoto(3);  
+            setTimeout(function() {  
+                countdown.classList.remove('show');  
+                goToStep4();  
+            }, 1000);  
+        }  
+    }  
+    show();  
 }  
   
 // ==================== 第四步：展示照片 ====================  
@@ -570,10 +445,6 @@ function goToStep4() {
     hint.classList.remove('show');  
     hatCanvas.style.display = 'none';  
     threeContainer.style.display = 'none';  
-    showFinalPhotos();  
-}  
-  
-function showFinalPhotos() {  
     finalDisplay.innerHTML =   
         '<div class="final-title">🎄 Merry Christmas 🎄</div>' +  
         '<div class="photo-container">' +  
@@ -584,65 +455,29 @@ function showFinalPhotos() {
     finalDisplay.classList.add('show');  
 }  
   
-// ==================== 触摸/鼠标事件 ====================  
-function getPosition(e) {  
-    if (e.touches && e.touches.length > 0) {  
-        return { x: e.touches[0].clientX, y: e.touches[0].clientY };  
-    }  
+// ==================== 事件监听 ====================  
+function getPos(e) {  
+    if (e.touches && e.touches.length > 0) return { x: e.touches[0].clientX, y: e.touches[0].clientY };  
     return { x: e.clientX, y: e.clientY };  
 }  
   
-fogCanvas.addEventListener('mousedown', function(e) {  
-    if (currentStep !== 1) return;  
-    isDrawing = true;  
-    var pos = getPosition(e);  
-    lastX = pos.x;  
-    lastY = pos.y;  
-});  
-  
-fogCanvas.addEventListener('mousemove', function(e) {  
-    if (!isDrawing || currentStep !== 1) return;  
-    var pos = getPosition(e);  
-    clearFog(pos.x, pos.y);  
-});  
-  
+fogCanvas.addEventListener('mousedown', function(e) { if (currentStep !== 1) return; isDrawing = true; var p = getPos(e); lastX = p.x; lastY = p.y; });  
+fogCanvas.addEventListener('mousemove', function(e) { if (!isDrawing || currentStep !== 1) return; var p = getPos(e); clearFog(p.x, p.y); });  
 fogCanvas.addEventListener('mouseup', function() { isDrawing = false; });  
 fogCanvas.addEventListener('mouseleave', function() { isDrawing = false; });  
-  
-fogCanvas.addEventListener('touchstart', function(e) {  
-    if (currentStep !== 1) return;  
-    e.preventDefault();  
-    isDrawing = true;  
-    var pos = getPosition(e);  
-    lastX = pos.x;  
-    lastY = pos.y;  
-}, { passive: false });  
-  
-fogCanvas.addEventListener('touchmove', function(e) {  
-    if (!isDrawing || currentStep !== 1) return;  
-    e.preventDefault();  
-    var pos = getPosition(e);  
-    clearFog(pos.x, pos.y);  
-}, { passive: false });  
-  
+fogCanvas.addEventListener('touchstart', function(e) { if (currentStep !== 1) return; e.preventDefault(); isTouchDevice = true; isDrawing = true; var p = getPos(e); lastX = p.x; lastY = p.y; }, { passive: false });  
+fogCanvas.addEventListener('touchmove', function(e) { if (!isDrawing || currentStep !== 1) return; e.preventDefault(); var p = getPos(e); clearFog(p.x, p.y); }, { passive: false });  
 fogCanvas.addEventListener('touchend', function() { isDrawing = false; });  
   
-// ==================== 开始按钮 ====================  
 startBtn.addEventListener('click', function() {  
     startBtn.textContent = '启动中...';  
-      
-    bgm.muted = true;  
-    bgm.volume = 0;  
+    bgm.muted = true; bgm.volume = 0;  
     bgm.play().catch(function() {});  
-      
     resizeCanvas();  
-      
-    startCamera().then(function(success) {  
-        if (!success) return;  
-          
+    startCamera().then(function(ok) {  
+        if (!ok) return;  
         drawCamera();  
         initFog();  
-          
         startOverlay.classList.add('hidden');  
         hint.textContent = '用手指擦去雾气 ❄️';  
         hint.classList.add('show');  
@@ -650,7 +485,6 @@ startBtn.addEventListener('click', function() {
     });  
 });  
   
-// ==================== 窗口大小变化 ====================  
 window.addEventListener('resize', function() {  
     resizeCanvas();  
     if (currentStep === 1) initFog();  
