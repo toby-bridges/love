@@ -148,7 +148,6 @@ function goToStep2() {
             hint.textContent = '十指交叉，许个愿吧 🙏';  
             hint.classList.add('show');  
             initHands();  
-            // 10秒超时自动截图  
             step2TimeoutId = setTimeout(function() {  
                 if (currentStep === 2) {  
                     takePhoto(2);  
@@ -344,7 +343,7 @@ function detectHands() {
 function onHandsResults(results) {  
     if (currentStep !== 2) return;  
     if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {  
-        var h1 = results.multiHandLandmarks[0][0]; // 手腕  
+        var h1 = results.multiHandLandmarks[0][0];  
         var h2 = results.multiHandLandmarks[1][0];  
         var dist = Math.sqrt(Math.pow(h1.x - h2.x, 2) + Math.pow(h1.y - h2.y, 2));  
           
@@ -406,9 +405,11 @@ function onFaceResults(results) {
         var dx = (1 - rt.x) - (1 - lt.x);  
         var dy = rt.y - lt.y;  
         var angle = Math.atan2(dy, dx);  
+          
         hatCtx.save();  
-        hatCtx.translate(hx, hy - hh * 0.3);  
+        hatCtx.translate(hx, hy - hh * 0.5);  
         hatCtx.rotate(angle);  
+        hatCtx.scale(1, -1);  
         hatCtx.drawImage(hatImg, -hw / 2, -hh / 2, hw, hh);  
         hatCtx.restore();  
     }  
