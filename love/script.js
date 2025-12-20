@@ -108,7 +108,7 @@ function clearFog(x, y) {
     }  
 }  
   
-// ==================== 截图（简化版） ====================  
+// ==================== 截图 ====================  
 function takePhoto(step) {  
     try {  
         flash.classList.add('active');  
@@ -119,31 +119,20 @@ function takePhoto(step) {
         tc.height = cameraCanvas.height;  
         var tx = tc.getContext('2d');  
           
-        // 1. 画摄像头  
         tx.drawImage(cameraCanvas, 0, 0);  
           
-        // 2. 第一张加雾气  
-        if (step === 1) {  
-            tx.drawImage(fogCanvas, 0, 0);  
-        }  
-          
-        // 3. 第二张加粒子效果  
+        if (step === 1) tx.drawImage(fogCanvas, 0, 0);  
         if (step === 2 && renderer && renderer.domElement) {  
             renderer.render(scene, camera3d);  
             tx.drawImage(renderer.domElement, 0, 0, tc.width, tc.height);  
         }  
-          
-        // 4. 第三张加帽子（不加粒子，减少内存压力）  
-        if (step === 3) {  
-            tx.drawImage(hatCanvas, 0, 0);  
-        }  
+        if (step === 3) tx.drawImage(hatCanvas, 0, 0);  
           
         var data = tc.toDataURL('image/jpeg', 0.8);  
         if (step === 1) photo1 = data;  
         if (step === 2) photo2 = data;  
         if (step === 3) photo3 = data;  
           
-        // 清理临时画布  
         tc = null;  
         tx = null;  
     } catch (e) {  
@@ -191,7 +180,7 @@ function initThreeJS() {
     renderer.setClearColor(0x000000, 0);  
     threeContainer.appendChild(renderer.domElement);  
       
-    var count = 1500; // 减少粒子数量  
+    var count = 1500;  
     var geo = new THREE.BufferGeometry();  
     var pos = new Float32Array(count * 3);  
     var col = new Float32Array(count * 3);  
@@ -355,13 +344,12 @@ function animateAura() {
     requestAnimationFrame(animateAura);  
 }  
   
-// ==================== 停止3D动画 ====================  
 function stopThreeJS() {  
     animationRunning = false;  
     threeContainer.style.display = 'none';  
 }  
   
-// ==================== 手势检测：十指交叉 ====================  
+// ==================== 手势检测 ====================  
 function initHands() {  
     hands = new Hands({ locateFile: function(f) { return 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + f; } });  
     hands.setOptions({ maxNumHands: 2, modelComplexity: 1, minDetectionConfidence: 0.6, minTrackingConfidence: 0.5 });  
@@ -397,10 +385,7 @@ function onHandsResults(results) {
 // ==================== 第三步：圣诞帽 ====================  
 function goToStep3() {  
     currentStep = 3;  
-      
-    // 停止3D动画，释放内存  
     stopThreeJS();  
-      
     hint.textContent = '看镜头，准备戴圣诞帽 🎅';  
     hint.classList.add('show');  
     hatCanvas.style.display = 'block';  
@@ -426,6 +411,8 @@ function detectFace() {
   
 function onFaceResults(results) {  
     hatCtx.clearRect(0, 0, hatCanvas.width, hatCanvas.height);  
+      
+    // 绘制摄像头画面  
     if (video.readyState >= 2) {  
         cameraCtx.save();  
         cameraCtx.translate(cameraCanvas.width, 0);  
@@ -433,23 +420,33 @@ function onFaceResults(results) {
         cameraCtx.drawImage(video, 0, 0, cameraCanvas.width, cameraCanvas.height);  
         cameraCtx.restore();  
     }  
-    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0 && hatImg.complete) {  
+      
+    // 绘制帽子（修复版）  
+    if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0 && hatImg.complete && hatImg.naturalWidth > 0) {  
         var lm = results.multiFaceLandmarks[0];  
-        var fh = lm[10], lt = lm[234], rt = lm[454];  
+        var fh = lm[10];  // 额头  
+        var lt = lm[234]; // 左太阳穴  
+        var rt = lm[454]; // 右太阳穴  
+          
+        // 计算位置（镜像）  
         var hx = (1 - fh.x) * hatCanvas.width;  
         var hy = fh.y * hatCanvas.height;  
+          
+        // 计算帽子大小  
         var fw = Math.abs(rt.x - lt.x) * hatCanvas.width;  
-        var hw = fw * 2.2;  
+        var hw = fw * 2.5;  
         var hh = hw * (hatImg.naturalHeight / hatImg.naturalWidth);  
+          
+        // 计算头部角度  
         var dx = (1 - rt.x) - (1 - lt.x);  
         var dy = rt.y - lt.y;  
         var angle = Math.atan2(dy, dx);  
           
+        // 绘制帽子（使用负高度翻转）  
         hatCtx.save();  
-        hatCtx.translate(hx, hy - hh * 0.5);  
+        hatCtx.translate(hx, hy - hh * 0.35);  
         hatCtx.rotate(angle);  
-        hatCtx.scale(1, -1);  
-        hatCtx.drawImage(hatImg, -hw / 2, -hh / 2, hw, hh);  
+        hatCtx.drawImage(hatImg, -hw / 2, -hh, hw, hh);  
         hatCtx.restore();  
     }  
 }  
@@ -469,8 +466,6 @@ function startCountdown() {
         } else {  
             countdown.textContent = '📸';  
             countdown.classList.add('show');  
-              
-            // 延迟一点截图，确保画面稳定  
             setTimeout(function() {  
                 takePhoto(3);  
                 setTimeout(function() {  
@@ -488,8 +483,6 @@ function goToStep4() {
     currentStep = 4;  
     hint.classList.remove('show');  
     hatCanvas.style.display = 'none';  
-      
-    // 确保3D已关闭  
     if (threeContainer) threeContainer.style.display = 'none';  
       
     finalDisplay.innerHTML =   
